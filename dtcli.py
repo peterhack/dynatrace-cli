@@ -20,7 +20,7 @@ API_ENDPOINT_EVENTS = "/api/v1/events"
 # Configuration is read from config file if exists. If you want to go back to default simply delete the config file
 dtconfigfilename = os.path.dirname(os.path.abspath(__file__)) + "\\" + "dtconfig.txt"
 config = {
-    "tenanthost"  : "smpljson",   # "hci34192.live.dynatrace.com" # this would be the configuration for a specific Dynatrace SaaS Tenant
+    "tenanthost"  : "smpljson",   # "abc12345.live.dynatrace.com" # this would be the configuration for a specific Dynatrace SaaS Tenant
     "apitoken"    : "smpltoken",  # YOUR API TOKEN, generated with Dynatrace
     "cacheupdate" : -1            # -1 = NEVER, 0=ALWAYS, X=After X seconds
 }
@@ -37,7 +37,7 @@ def getRequestUrl(apiEndpoint, queryString):
 def getCacheFilename(apiEndpoint, queryString):
     fullCacheFilename = os.path.dirname(os.path.abspath(__file__)) + "\\" + config["tenanthost"].replace(".", "_") + "\\" + apiEndpoint.replace("/","_")
     if(queryString is not None and len(queryString) > 0):
-        fullCacheFilename += "\\" + urllib.parse.unquote(queryString);
+        fullCacheFilename += "\\" + urllib.parse.unquote(queryString).replace(".", "_").replace(":", "_").replace("?", "_").replace("&", "_");
     fullCacheFilename += ".json"
 
     return fullCacheFilename
@@ -88,7 +88,7 @@ def queryDynatraceAPI(isGet, apiEndpoint, queryString, postBody):
             jsonContent = json.load(json_data)
     else:
         myResponse = requests.get(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=True)
-        print("Request to Dynatrace API ended with: " + str(myResponse.status_code))
+        # print("Request to Dynatrace API ended with: " + str(myResponse.status_code))
 
         # For successful API call, response code will be 200 (OK)
         if(myResponse.ok):
@@ -102,6 +102,13 @@ def queryDynatraceAPI(isGet, apiEndpoint, queryString, postBody):
             # now lets save the content to the cache as well
             with open(fullCacheFilename, "w+") as output_file:
                 json.dump(jsonContent, output_file)
+
+        else:
+            jsonContent = json.loads(myResponse.text)
+            if(jsonContent["error"]):
+                print("Dynatrace API ERROR: " + jsonContent["error"]["message"])
+            jsonContent = None
+            raise Exception("Error", "Dynatrace API returned an error")
 
     return jsonContent
 
@@ -163,11 +170,23 @@ class KeySearch:
 
 def getAttributeFromFirstMatch(attributeName, objectlist):
     "Iterates through a list of objects and returns first occurence of attributeName"
-    for object in objectlist:
+    "attributeName can also be a comma separated list. in that case the function returns an array of values of the object that first matches ALL attribute names"
+    attributeNames = attributeName.split(",")
+
+    for obj in objectlist:
         try:
-            attributeValue = object[attributeName]
-            if(attributeValue is not None):
-                return attributeValue
+            attributeValues = []
+            if(obj is not None):
+                for attribute in attributeNames:
+                    attributeValue = obj[attribute]
+                    if(attributeValue is not None):
+                        attributeValues.append(attributeValue)
+
+                if len(attributeValues) == len(attributeNames):
+                    if(len(attributeValues) == 1):
+                        return attributeValues[0]
+
+                    return attributeValues
         except KeyError:
             x=1
     
@@ -214,7 +233,13 @@ def jsonFindValuesByKeyEx(jsonContent, key, matchValue, returnKey, parentJsonNod
 
                 if foundKeyValueMatch is not None:
                     foundKeyValueMatch = getAttributeFromFirstMatch(returnKey, [jsonContent, parentJsonContent])
-            
+
+            #2: We found a key, it is a list and that is the valuekeyname we are looking for            
+            if ((type(jsonContent[jsonkey]) is list) and (jsonkey == key.valuekeyname)):
+                for listitem in jsonContent[jsonkey]:
+                    if(matchValue.match(listitem)):
+                        result.append(getAttributeFromFirstMatch(returnKey, [jsonContent, parentJsonContent]))
+
             # 2: we have a list (that doesnt match the key) and a dictionary (we dont care about matching keys as this is currently not supporrted)
             elif type(jsonContent[jsonkey]) in (list, dict):
                 subResult = jsonFindValuesByKeyEx(jsonContent[jsonkey], key, matchValue, returnKey, jsonkey, jsonContent)
@@ -224,11 +249,8 @@ def jsonFindValuesByKeyEx(jsonContent, key, matchValue, returnKey, parentJsonNod
             # 3: we have a matching key on a regular value
             elif jsonkey == key.valuekeyname:
                 # if we found the rigth key check if the value matches
-                if(matchValue is None):
-                    foundValueMatch = jsonContent[jsonkey]
-                else:
-                    if(matchValue.match(jsonContent[jsonkey])):
-                        foundValueMatch = getAttributeFromFirstMatch(returnKey, [jsonContent, parentJsonContent])
+                if(matchValue is None or matchValue.match(jsonContent[jsonkey])):
+                    foundValueMatch = getAttributeFromFirstMatch(returnKey, [jsonContent, parentJsonContent])
 
             # 4: we have a matching context key in case user searches for context, e.g. in a tag
             elif (key.contextvalue is not None) and (jsonkey == key.contextkeyname):
@@ -251,27 +273,76 @@ def jsonFindValuesByKeyEx(jsonContent, key, matchValue, returnKey, parentJsonNod
                     result.extend(subResult)
     return result
 
-def mainX():
-    pass
-    # readConfig()
-    # saveConfig()
-    # queryDynatraceAPI(False, API_ENDPOINT_APPLICATIONS, "", "")
-    # doEntity(False, ["dtcli", "ent","app"])
-    # doEntity(False, ["dtcli", "ent","host","tags/AWS:Name=et-demo.*", "displayName"])
-    # doEntity(False, ["dtcli", "ent","host","tags/AWS:Category?value=DEMOABILITY", "displayName"])
-    # doEntity(False, ["dtcli", "ent","host","tags/AWS:Name=.*", "value"])
-    # doEntity(False, ["dtcli", "ent","host","tags/AWS:Name=.*", "entityId"])
-    # doEntity(False, ["dtcli", "ent", "srv", "agentTechnologyType=JAVA", "displayName"])
-    # doEntity(False, ["dtcli", "ent", "srv", "serviceTechnologyTypes=ASP.NET", "displayName"])
-    # doEntity(False, ["dtcli", "ent", "srv", "serviceTechnologyTypes=ASP.NET", "entityId"])
-    # doEntity(False, ["dtcli", "ent", "pg", "key=customizable", "entityId"])
-    # doEntity(False, ["dtcli", "ent", "pg", "key=se-day", "displayName"])
-    # doEntity(False, ["dtcli", "ent", "pg", "javaMainClasses=.*Bootstrap.*"])
-    # doEntity(False, ["dtcli", "ent", "pg", "cloudFoundryAppNames=.*"])
-    # doEntity(False, ["dtcli", "ent", "host", "ipAddresses=54\.86\..*"])
-    # doEntity(False, ["dtcli", "ent", "pg", "softwareTechnologies/?type=TOMCAT"])
+def matchEntityName(entityName, listOfEntities):
+    if(listOfEntities is None):
+        return True
+
+    if(type(listOfEntities) is str):
+        return listOfEntities == entityName
+
+    if(type(listOfEntities) is list):
+        if(entityName in listOfEntities):
+            return True
+
+    return False;
+
+def filterDataPointsForEntities(jsonDataPoints, entities):
+    # Will iterate through the Data Points and return those metrics that match the entities. If entities == None we return all matching entities
+    result = {}
+    for entityDataPoint in jsonDataPoints:
+        if matchEntityName(entityDataPoint, entities):
+            result[entityDataPoint] = {}
+            result[entityDataPoint]["dataPoints"] = jsonDataPoints[entityDataPoint]
+    return result
 
 def main():
+    pass
+    readConfig()
+    # saveConfig()
+    # queryDynatraceAPI(False, API_ENDPOINT_APPLICATIONS, "", "")
+    #doEntity(False, ["dtcli", "ent", "app"], True)
+    #doEntity(False, ["dtcli", "ent", "app", ".*", "displayName"], True)
+    #doEntity(False, ["dtcli", "ent", "app", ".*", "displayName,entityId"], True)
+    #doEntity(False, ["dtcli", "ent", "app", ".*easy.*", "displayName"], True)
+    #doEntity(False, ["dtcli", "ent", "app", "www\.easytravel\.com", "displayName"], True)
+    #doEntity(False, ["dtcli", "ent", "app", "www\.easytravel\.com", "entityId"], True)
+    #doEntity(False, ["dtcli", "ent","host","tags/AWS:Name=et-demo.*", "displayName"], True)
+    #doEntity(False, ["dtcli", "ent","host","tags/AWS:Category?value=DEMOABILITY", "displayName"], True)
+    #doEntity(False, ["dtcli", "ent","host","tags/AWS:Name=.*", "value"], True)
+    #doEntity(False, ["dtcli", "ent","host","tags/AWS:Name=.*", "entityId"], True)
+    #doEntity(False, ["dtcli", "ent", "srv", "agentTechnologyType=JAVA", "displayName"], True)
+    #doEntity(False, ["dtcli", "ent", "srv", "serviceTechnologyTypes=ASP.NET", "displayName"], True)
+    #doEntity(False, ["dtcli", "ent", "srv", "serviceTechnologyTypes=ASP.NET", "entityId"], True)
+    #doEntity(False, ["dtcli", "ent", "pg", "key=customizable", "entityId"], True)
+    #doEntity(False, ["dtcli", "ent", "pg", "key=se-day", "displayName"], True)
+    #doEntity(False, ["dtcli", "ent", "pg", "javaMainClasses=.*Bootstrap.*"], True)
+    #doEntity(False, ["dtcli", "ent", "pg", "cloudFoundryAppNames=.*"], True)
+    #doEntity(False, ["dtcli", "ent", "host", "ipAddresses=54\.86\..*"], True)
+    #doEntity(False, ["dtcli", "ent", "pg", "softwareTechnologies/?type=TOMCAT"], True)
+
+    #doTimeseries(False, ["dtcli", "ts", "list"], True)
+    #doTimeseries(False, ["dtcli", "ts", "list", ".*"], True)
+    #doTimeseries(False, ["dtcli", "ts", "list", "dimensions=APPLICATION"], True)
+    #doTimeseries(False, ["dtcli", "ts", "list", ".*", "displayName"], True)
+    #doTimeseries(False, ["dtcli", "ts", "list", "com.dynatrace.builtin:appmethod.useractionsperminute", "aggregationTypes"], True)
+    #doTimeseries(False, ["dtcli", "ts", "describe", "com.dynatrace.builtin:appmethod.useractionsperminute"], True)
+    #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:service.responsetime"], True)
+    #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:appmethod.useractionsperminute[count%hour]"], True)
+    #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:appmethod.useractionsperminute[count%hour]", "APPLICATION_METHOD-7B11AF03C396DCBC"], True)
+    #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:app.useractionduration[avg%hour]", "APPLICATION-F5E7AEA0AB971DB1"], True)
+
+    #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour],app.useractionduration[avg%hour]"], True)
+    #doDQL(False, ["dtcli", "dql", "host", ".*demo.*", "host.cpu.system[max%hour]"], True)
+    #doDQL(False, ["dtcli", "dql", "host", "tags/AWS:Name=et-demo.*", "host.cpu.system[max%hour]"], True)
+    #doDQL(False, ["dtcli", "dql", "host", "tags/AWS:Name=et-demo.*", "com.dynatrace.builtin:host.cpu.system[max%hour]"], True)
+    #doDQL(False, ["dtcli", "dql", "pg", "cloudFoundryAppNames=.*", "com.dynatrace.builtin:pgi.cpu.usage[avg%hour]"], True)
+    #doDQL(False, ["dtcli", "dql", "srv", "agentTechnologyType=JAVA", "service.responsetime[max%hour]"], True)
+    #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour]"], True)
+    doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour],app.useractionduration[avg%hour]"], True)
+    doDQL(False, ["dtcli", "dql", "appmethod", ".*Book.*", "appmethod.useractionduration[avg%hour]"], True)    
+    
+
+def mainX():
     readConfig()
     command = "usagae"
     doHelp = False
@@ -285,15 +356,17 @@ def main():
             command = "usage"
 
     if command == "ent" :
-        doEntity(doHelp, sys.argv)
+        doEntity(doHelp, sys.argv, True)
     elif command == "ts" :
-        doTimeseries(doHelp, sys.argv)
+        doTimeseries(doHelp, sys.argv, True)
     elif command == "config" :
         doConfig(doHelp, sys.argv)
     elif command == "prob" :
         doProblem(doHelp, sys.argv)
     elif command == "evt" :
         doEvent(doHelp, sys.argv)
+    elif command == "dql" :
+        doDQL(doHelp, sys.argv, True)
     else :
         doUsage(sys.argv)
     exit
@@ -313,86 +386,168 @@ def saveConfig():
 def doUsage(args):
     "Just printing Usage"
     print("Usage: Dynatrace Command Line Interface")
+    print("=========================================")
     print("dtcli <command> <options>")
-    print("Valid commands include ent=entities, ts=timerseries, prob=problems, evt=events")
+    print("commands: ent=entities, ts=timerseries, prob=problems, evt=events, dql=Dynatrace Query Language, config")
+    print("=========================================")
     print("To configure access token and Dynatrace REST Endpoint use command 'config'")
     print("For more information on a command use: dtcli help <command>")
 
-def doEntity(doHelp, args):
+def doEntity(doHelp, args, doPrint):
     "Allows you to query information about entities"
     if doHelp:
-        print("dtcli ent <type> <query> <resulttag>")
-        print("type: app | srv | pg | host")
-        print("Examples:")
-        print("===================")
-        print("dtcli ent app .*easyTravel.*")
-        print("dtcli ent srv myfrontend")
-        print("dtcli ent host tag/AWS:Name=et-demo-1-win1")
-        print("dtcli ent host tag/Name=.*demo.*")
-        print("dtcli ent srv serviceTechnologyTypes=ASP.NET discoveredName")
-        print("dtcli ent app .*easyTravel.* displayName")
+        if(doPrint):
+            print("dtcli ent <type> <query> <resulttag>")
+            print("type: app | srv | pg | host")
+            print("Examples:")
+            print("===================")
+            print("dtcli ent app .*easyTravel.*")
+            print("dtcli ent srv myfrontend")
+            print("dtcli ent host tag/AWS:Name=et-demo-1-win1")
+            print("dtcli ent host tag/Name=.*demo.*")
+            print("dtcli ent srv serviceTechnologyTypes=ASP.NET discoveredName")
+            print("dtcli ent app .*easyTravel.* displayName")
     else:
         entityTypes = ["app","srv","pg","host"]
         entityEndpoints = [API_ENDPOINT_APPLICATIONS, API_ENDPOINT_SERVICES, API_ENDPOINT_PROCESS_GROUPS, API_ENDPOINT_HOSTS]
         if (len(args) <= 2) or not operator.contains(entityTypes, args[2]):
             # Didnt provide the correct parameters - show help!
-            doEntity(True, args)
+            doEntity(True, args, doPrint)
         else:
+            # lets check our special token params
+            doCheckTempConfigParams(args, 5)
+
             # As the Dynatrace API currently doesnt suppot all the filtering that we want to provide through this CLI we have to parse the response and filter in our script
             apiEndpoint = operator.getitem(entityEndpoints, operator.indexOf(entityTypes, args[2]))
             jsonContent = queryDynatraceAPI(True, apiEndpoint, "", "")
+            resultTag = "entityId"
 
             if len(args) > 3:
                 nameValue = parseNameValue(args[3], "displayName", "")
-                resultTag = "entityId"
                 if(len(args) > 4):
                     resultTag = args[4]
                 elements = jsonFindValuesByKey(jsonContent, nameValue.name, nameValue.value, resultTag)
             else:
-                elements = jsonFindValuesByKey(jsonContent, "displayName", None, None)
-            print(elements)
+                elements = jsonFindValuesByKey(jsonContent, "displayName", None, resultTag)
 
-def doTimeseries(doHelp, args):
+            if(doPrint):
+                print(elements)
+
+            return elements;
+    return None
+
+def doTimeseries(doHelp, args, doPrint):
     "Allows you to query information about entities"
     if doHelp:
-        print("dtcli ts <action> <options>")
-        print("action: list | query | push")
-        print("options for list: (optional)*name*")
-        print("options for query: [tsid1,tsid2,...] ([entid1,entid2,...])")
-        print("options for push: TODO")
-        print("Examples:")
-        print("===================")
-        print("dtcli ts list")
-        print("dtcli ts list *ResponseTime*")
-        print("dtcli ts query [jmx.tomcat.jdbc.pool:Active]")
-        print("dtcli ts query [jmx.tomcat.jdbc.pool:Active] [ENTITY-XYZ,ENTITY-ABC]")
+        if doPrint:
+            print("dtcli ts <action> <options>")
+            print("action: list | query | push")
+            print("options for list: [*name*] [return key]")
+            print("options for query: [tsid1,tsid2,...] ([entid1,entid2,...])")
+            print("options for push: TODO")
+            print("Examples:")
+            print("===================")
+            print("dtcli ts list")
+            print("dtcli ts list .*")
+            print("dtcli ts list *ResponseTime*")
+            print("dtcli ts list dimensions=APPLICATION")
+            print("dtcli ts list *ResponseTime* displayName")
+            print("dtcli ts describe com.dynatrace.builtin:appmethod.useractionsperminute")
+            print("dtcli ts query jmx.tomcat.jdbc.pool:Active")
+            print("dtcli ts query com.dynatrace.builtin:appmethod.useractionduration")
+            print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%hour]")
+            print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%hour] APP-ENTITY")
     else:
-        actionTypes = ["list","query","push"]
+        actionTypes = ["list","query","push","describe"]
         action = None
         if (len(args) <= 2) or not operator.contains(actionTypes, args[2]):
             # Didnt provide the correct parameters - show help!
-            doTimeseries(True, args)
+            doTimeseries(True, args, doPrint)
         else:
             action = operator.indexOf(actionTypes, args[2])
 
         if action == 0:   # list
+            # lets check our special token params
+            doCheckTempConfigParams(args, 5)
+
             jsonContent = queryDynatraceAPI(True, API_ENDPOINT_TIMESERIES, "", "")
-            if len(args) > 3:
-                elements = jsonFindValuesByKey(jsonContent, "displayName", args[3], "timeseriesId")
-            else:
-                elements = jsonFindValuesByKey(jsonContent, "displayName", None, None)
+            returnKey = "timeseriesId"
+            matchValue = None
+            matchKeyName = "displayName"
+            if (len(args) > 4):
+                returnKey = args[4]
+            if (len(args) > 3):
+                nameValue = parseNameValue(args[3], "displayName", "")
+                matchValue = nameValue.value
+                matchKeyName = nameValue.name
+
+            elements = jsonFindValuesByKey(jsonContent, matchKeyName, matchValue, returnKey)
             print(elements)
         elif action == 1: # query
+            # lets check our special token params
+            doCheckTempConfigParams(args, 5)
+        
             # build the query string for the timeseries id
+            entities = None
+            if(len(args) > 4):
+                entities = args[4]
             if(len(args) > 3):
                 timeseriesId = args[3]
-                jsonContent = queryDynatraceAPI(True, API_ENDPOINT_TIMESERIES, "timeseriesId=" + timeseriesId + "&relativeTime=hour&aggregationType=avg", "")
+                aggregation = "avg"
+                timeframe = "hour"
+
+                # "Allowed strings are: justtimeseries, timeseries[aggregagtion],, timeseries[aggregation%timeframe]"
+                # now we check for name=value pair or just value
+                beginBracket = timeseriesId.find("[")
+                endBracket = timeseriesId.find("]")
+                if(endBracket > beginBracket):
+                    configuration = timeseriesId[beginBracket+1:endBracket]
+                    timeseriesId = timeseriesId[0:beginBracket]
+                    configParts = configuration.partition("%")
+                    if(len(configParts[0]) > 0):
+                        aggregation = configParts[0]
+                    if(len(configParts[2]) > 0):
+                        timeframe = configParts[2]
+
+                # now lets query the timeframe API
+                jsonContent = queryDynatraceAPI(True, API_ENDPOINT_TIMESERIES, "timeseriesId=" + timeseriesId + "&relativeTime=" + timeframe.lower() + "&aggregationType=" + aggregation.lower(), "")
+
+                # We got our jsonContent - now we need to return the data for all Entities or the specific entities that got passed to us
+                jsonContentResult = jsonContent["result"]
+                if(jsonContentResult):
+                    if(jsonContentResult["timeseriesId"] == timeseriesId):
+                        measureResult = filterDataPointsForEntities(jsonContentResult["dataPoints"], entities)
+
+                        # now we iterate through all Entitys and also get the name
+                        for entity in measureResult:
+                            measureResult[entity]["entityDisplayName"] = jsonContentResult["entities"][entity]
+                            measureResult[entity]["unit"] = jsonContentResult["unit"]
+                            measureResult[entity]["timeseriesId"] = jsonContentResult["timeseriesId"]
+
+                        if doPrint:
+                            print(measureResult)
+                        return measureResult
+            else:
+                doTimeseries(True, args, doPrint)
         
-            print("TODO: implement ts query")
         elif action == 2: # push
             print("TODO: implement ts push")
+        elif action == 3: # describe
+            # lets check our special token params
+            doCheckTempConfigParams(args, 4)
+        
+            if(len(args) > 3):
+                timeseriesId = args[3]
+                jsonContent = queryDynatraceAPI(True, API_ENDPOINT_TIMESERIES, "", "")
+                for timeseries in jsonContent:
+                    if(timeseries["timeseriesId"] == timeseriesId):
+                        if doPrint:
+                            print(timeseries)
+                        return timeseries
+            else:
+                doTimeseries(True, args, doPrint)
         else:
-            doTimeseries(True, args)
+            doTimeseries(True, args, doPrint)
 
 def doConfig(doHelp, args):
     if doHelp or len(args) < 4:
@@ -406,7 +561,7 @@ def doConfig(doHelp, args):
         print("==============")
         print("Current Dynatrace Tenant: " + config["tenanthost"])
     else:
-        global config
+        # global config
         i = 2
         while i+2 <= len(args):
             configName = args[i]
@@ -424,6 +579,84 @@ def doConfig(doHelp, args):
             i = i+2
 
         saveConfig()
+
+def doCheckTempConfigParams(args, argIndex):
+    # special check for Dynatrace Token and Dynatrace URL. We allows this to pass in the credentials without having to go through config. this makes this query completely stateless
+    if(len(args) > argIndex):
+        config["tenanthost"] = args[argIndex]     
+    if(len(args) > argIndex+1):
+        config["apitoken"] = args[argIndex+1]     
+
+def doDQL(doHelp, args, doPrint):
+    # dql", "app", "www.easytravel.com", "app.useractions[avg%hour],app.useractionduration[avg%hour]
+    "Allows you to query a list of metrics for a particular set of entity. This is a conventience option instead of using entity queries and then timeseries queries"
+    if doHelp:
+        print("dtcli dql <entitytype> <entity> <metrics> [dtUrl] [dtToken]")
+        print("entitytype: app | appmethod | srv | pg | host")
+        print("entity:     entityname")
+        print("metrics:    metricname[aggr%time],metricname[aggr%time]")
+        print("Examples:")
+        print("===================")
+        print("dtcli dql host .*demo.* host.cpu.system[max%hour]")
+        print("dtcli dql host tags/AWS:Name=et-demo.* host.cpu.system[max%hour]")
+        print("dtcli dql host tags/AWS:Name=et-demo.* com.dynatrace.builtin:host.cpu.system[max%hour]")
+        print("dtcli dql pg cloudFoundryAppNames=.* com.dynatrace.builtin:pgi.cpu.usage[avg%hour]")
+        print("dtcli dql srv agentTechnologyType=JAVA service.responsetime[max%hour]")
+        print("dtcli dql app www.easytravel.com app.useractions[count%hour]")
+        print("dtcli dql app www.easytravel.com app.useractions[count%hour],app.useractionduration[avg%hour]")
+        print("dtcli dql appmethod .*Book.* appmethod.useractionduration[avg%hour]")
+        print("-----")
+        print("dtcli dql app www.easytravel.com app.useractions[count%hour] http://yourtenant.live.dynatrace.com ASESFEA12ASF")
+
+    else:
+        entityTypes = ["appmethod","app","srv","pg","host"]
+        entityType = None
+        if (len(args) <= 4) or not operator.contains(entityTypes, args[2]):
+            # Didnt provide the correct parameters - show help!
+            doDQL(True, args, doPrint)
+            return;
+        
+        entityType = operator.indexOf(entityTypes, args[2])
+
+        # lets check our special token params
+        doCheckTempConfigParams(args, 5)
+
+        # now lets get the data!
+        if entityType == 0: # appmethod -> special handling as there is no queryable entitytype of appmethod
+            allTimeseries = args[4].split(",")
+            appMethodEntityMatch = re.compile(args[3])
+            resultTimeseries = []
+            for timeseries in allTimeseries:
+                if(timeseries.find(":") <= 0):
+                    timeseries = "com.dynatrace.builtin:" + timeseries
+                resultTimeseriesForEntity = doTimeseries(False, ["dtcli", "ts", "query", timeseries], False)
+                for timeseriesEntry in resultTimeseriesForEntity:
+                    if appMethodEntityMatch.match(resultTimeseriesForEntity[timeseriesEntry]["entityDisplayName"]):
+                        resultTimeseries.append({ timeseriesEntry : resultTimeseriesForEntity[timeseriesEntry]})
+
+            if doPrint:
+                print(resultTimeseries)
+
+            return resultTimeseries;
+        else:
+            resultEntities = doEntity(False, ["dtcli", "ent", args[2], args[3]], False)
+            resultTimeseries = []
+            if(resultEntities is None):
+                print("No entities returned for that query")
+            else:
+                for entity in resultEntities:
+                    # dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%hour] APP-ENTITY
+                    allTimeseries = args[4].split(",")
+                    for timeseries in allTimeseries:
+                        if(timeseries.find(":") <= 0):
+                            timeseries = "com.dynatrace.builtin:" + timeseries
+                        resultTimeseriesForEntity = doTimeseries(False, ["dtcli", "ts", "query", timeseries, entity], False)
+                        resultTimeseries.append(resultTimeseriesForEntity)
+
+            if doPrint:
+                print(resultTimeseries)
+
+            return resultTimeseries;
 
 def doProblem(doHelp, args):
     print("TODO: problem")
