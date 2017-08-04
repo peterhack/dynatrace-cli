@@ -3,6 +3,9 @@ This Python based CLI makes it easy to access the Dynatrace API (both SaaS and M
 
 The CLI also caches queried data (Smartscape and Timeseries) on the local disk. This allows you to execute multiple queries against Smartscape without the roundtrip to the Dynatrace API. It also allows you to work "offline". The GitHub repo includes a cached version of our Dynatrace Demo environment API output. This allows you to explore and test most of the supported use cases without having access to a Dynatrace Tenant.
 
+Here is a schematic overview of how the CLI works:
+![](./images/dtclioverview.png)
+
 ## Supported Use Cases:
 * Query Smartscape entities by any property, e.G: Display Name, Technology Type, Tag, ...
 * Query timeseries data for one or multiple entities and metric types
@@ -14,17 +17,52 @@ The CLI also caches queried data (Smartscape and Timeseries) on the local disk. 
 * Python Runtime: [Download](https://www.python.org/downloads/)
 * Dynatrace Tenant: [Get your Saas Trial Tenant](http://bit.ly/dtsaastrial)
 
+# Trying it yourself
+The easiest to get started is simply checking out this Git repo and install Python. By default the CLI will access cached data in the smpljson directory. Validate that the CLI works for you by executing the following sample
+```
+> py dtcli.py ent app .*easyTravel.*
+['MOBILE_APPLICATION-752C288D59734C79']
+```
+
+Alright - now we are ready. Here are more examples and a brief overview of the CLIs capabilities
+
 ## Examples
 The CLI assumes the following commands
-py dtcli.py <command> <options>
-<command>: 
+py dtcli.py \<command\> \<options\>
+
+command: 
 * config: configure dynatrace tenant, token and cache strategy
 * ent: query entities: app(lication), srv (services, pg (process groups), host
 * ts: list availabbly metric types and query timeseries data
 * prob: access problem information
 * evt: push and access custom events, e.g: deployments
 * dql: Dynatrace Query Language: a more convenient way to query timeseries data for certain entities ina  single command line
-<option> 
+
+option: that really depends on the command. Best is to ask for help to get more details:
+
+```
+> py dtcli.py config help
+> py dtcli.py ent help
+> py dtcli.py ts help
+> py dtcli.py dql help
+```
+
+## Examples: Configuration
+```
+> py dtcli.py config apitoken MYTOKENFORMYTENANT tenanthost mytenant.live.dynatrace.com
+Current configuration stored in dtconfig.json
+
+> py dtcli.py config cacheupdate 5
+Current configuration stored in dtconfig.json
+
+> py dtcli.py config revert
+Reverting back to local cached demo environment. Remember: only read-only operations work
+Current configuration stored in dtconfig.json
+
+> py dtcli.py config tenanthost smpljson cacheupdate -1
+Current configuration stored in dtconfig.json
+FYI - This is the same as revert: Always using cache from cache directory smpljson
+```
 
 ## Examples: Query Entities
 ```
