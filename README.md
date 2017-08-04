@@ -1,5 +1,5 @@
 # Dynatrace CLI (Command Line Interface)
-This Pyhton based CLI makes it easy to access the Dynatrace API (both SaaS and Managed). Besides accessing the underlying API the CLI also implements some DevOps specific use cases that allows you to automate Dynatrace into your DevOps Delivery Pipeline.
+This Python based CLI makes it easy to access the Dynatrace API (both SaaS and Managed). Besides accessing the underlying API the CLI also implements some DevOps specific use cases that allows you to automate Dynatrace into your DevOps Delivery Pipeline.
 
 The CLI also caches queried data (Smartscape and Timeseries) on the local disk. This allows you to execute multiple queries against Smartscape without the roundtrip to the Dynatrace API. It also allows you to work "offline". The GitHub repo includes a cached version of our Dynatrace Demo environment API output. This allows you to explore and test most of the supported use cases without having access to a Dynatrace Tenant.
 
@@ -11,7 +11,7 @@ The CLI also caches queried data (Smartscape and Timeseries) on the local disk. 
 * (TBD) Push Custom Metrics
 
 ## Requirements:
-* Pyhton Runtime: [Download](https://www.python.org/downloads/)
+* Python Runtime: [Download](https://www.python.org/downloads/)
 * Dynatrace Tenant: [Get your Saas Trial Tenant](http://bit.ly/dtsaastrial)
 
 ## Examples
