@@ -18,7 +18,7 @@ API_ENDPOINT_TIMESERIES = "/api/v1/timeseries"
 API_ENDPOINT_EVENTS = "/api/v1/events"
 
 # Configuration is read from config file if exists. If you want to go back to default simply delete the config file
-dtconfigfilename = os.path.dirname(os.path.abspath(__file__)) + "\\" + "dtconfig.txt"
+dtconfigfilename = os.path.dirname(os.path.abspath(__file__)) + "\\" + "dtconfig.json"
 config = {
     "tenanthost"  : "smpljson",   # "abc12345.live.dynatrace.com" # this would be the configuration for a specific Dynatrace SaaS Tenant
     "apitoken"    : "smpltoken",  # YOUR API TOKEN, generated with Dynatrace
@@ -295,9 +295,11 @@ def filterDataPointsForEntities(jsonDataPoints, entities):
             result[entityDataPoint]["dataPoints"] = jsonDataPoints[entityDataPoint]
     return result
 
-def main():
+def mainX():
     pass
     readConfig()
+
+    doConfig(False, ["dtcli", "config", "apitoken", "asdf"])
     # saveConfig()
     # queryDynatraceAPI(False, API_ENDPOINT_APPLICATIONS, "", "")
     #doEntity(False, ["dtcli", "ent", "app"], True)
@@ -338,11 +340,11 @@ def main():
     #doDQL(False, ["dtcli", "dql", "pg", "cloudFoundryAppNames=.*", "com.dynatrace.builtin:pgi.cpu.usage[avg%hour]"], True)
     #doDQL(False, ["dtcli", "dql", "srv", "agentTechnologyType=JAVA", "service.responsetime[max%hour]"], True)
     #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour]"], True)
-    doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour],app.useractionduration[avg%hour]"], True)
-    doDQL(False, ["dtcli", "dql", "appmethod", ".*Book.*", "appmethod.useractionduration[avg%hour]"], True)    
+    #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour],app.useractionduration[avg%hour]"], True)
+    #doDQL(False, ["dtcli", "dql", "appmethod", ".*Book.*", "appmethod.useractionduration[avg%hour]"], True)    
     
 
-def mainX():
+def main():
     readConfig()
     command = "usagae"
     doHelp = False
@@ -380,6 +382,7 @@ def readConfig():
 
 def saveConfig():
     "Stores configuration to disk"
+    print("Current configuration stored in " + dtconfigfilename)
     with open(dtconfigfilename, 'w') as outfile:
         json.dump(config, outfile)        
 
@@ -402,7 +405,7 @@ def doEntity(doHelp, args, doPrint):
             print("Examples:")
             print("===================")
             print("dtcli ent app .*easyTravel.*")
-            print("dtcli ent srv myfrontend")
+            print("dtcli ent srv JourneyService")
             print("dtcli ent host tag/AWS:Name=et-demo-1-win1")
             print("dtcli ent host tag/Name=.*demo.*")
             print("dtcli ent srv serviceTechnologyTypes=ASP.NET discoveredName")
@@ -449,9 +452,9 @@ def doTimeseries(doHelp, args, doPrint):
             print("===================")
             print("dtcli ts list")
             print("dtcli ts list .*")
-            print("dtcli ts list *ResponseTime*")
+            print("dtcli ts list .*response.*")
             print("dtcli ts list dimensions=APPLICATION")
-            print("dtcli ts list *ResponseTime* displayName")
+            print("dtcli ts list *response.* displayName")
             print("dtcli ts describe com.dynatrace.builtin:appmethod.useractionsperminute")
             print("dtcli ts query jmx.tomcat.jdbc.pool:Active")
             print("dtcli ts query com.dynatrace.builtin:appmethod.useractionduration")
@@ -550,11 +553,21 @@ def doTimeseries(doHelp, args, doPrint):
             doTimeseries(True, args, doPrint)
 
 def doConfig(doHelp, args):
+    
+    if not doHelp and len(args) > 2 and args[2] == "revert":
+        config["apitoken"] = "smpltoken"
+        config["tenanthost"] = "smpljson"
+        config["cacheupdate"] = -1
+        print("Reverting back to local cached demo environment. Remember: only read-only operations work")
+        saveConfig()
+        return;
+
     if doHelp or len(args) < 4:
         print("You can set the following configuration options")
         print("apitoken <dynatracetoken>")
-        print("tenanthost <http://yourdynatraceserver>")
+        print("tenanthost <yourdynatraceserver.domain>")
         print("cacheupdate -1 (only use cache), 0 (=never use cache), X (=update cache in X Minutes)")
+        print("revert: will revert to local cache setting")
         print("Examples")
         print("==============")
         print("dtapi config apitoken ABCEDEFASDF tenanthost myurl.live.dynatrace.com cacheupdate 5")
