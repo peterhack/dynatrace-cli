@@ -295,7 +295,7 @@ def filterDataPointsForEntities(jsonDataPoints, entities):
             result[entityDataPoint]["dataPoints"] = jsonDataPoints[entityDataPoint]
     return result
 
-def mainX():
+def main():
     pass
     readConfig()
 
@@ -343,8 +343,15 @@ def mainX():
     #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour],app.useractionduration[avg%hour]"], True)
     #doDQL(False, ["dtcli", "dql", "appmethod", ".*Book.*", "appmethod.useractionduration[avg%hour]"], True)    
     
+    doEvent(False, ["dtcli", "evt", "query"], False)
+    doEvent(False, ["dtcli", "evt", "query", "ent", "APPLICATION-F5E7AEA0AB971DB1"], False)
+    doEvent(False, ["dtcli", "evt", "query", "host", ".*demo.*"], False)
+    doEvent(False, ["dtcli", "evt", "push", "ent", "APPLICATION-F5E7AEA0AB971DB1"], False)
+    doEvent(False, ["dtcli", "evt", "push", "host", ".*demo.*"], False)
+    doEvent(False, ["dtcli", "evt", "push", "host", "tags/AWS:Name=et-demo.*", "deploymentName=StageDeployment", "deploymentVersion=1.1"], False)
+    doEvent(False, ["dtcli", "evt", "push", "host", "tags/AWS:Name=et-demo.*", "start=12312421000", "deploymentName=StageDeployment", "deploymentVersion=1.1", "source=Jenkins", "ciBackLink=http://myjenkins", "remediationAction=http://myremediationaction", "mycustomprop=my%20custom%value"], False)
 
-def main():
+def mainX():
     readConfig()
     command = "usagae"
     doHelp = False
@@ -674,8 +681,91 @@ def doDQL(doHelp, args, doPrint):
 def doProblem(doHelp, args):
     print("TODO: problem")
 
-def doEvent(doHelp, args):
-    print("TODO Event")
+def doEvent(doHelp, args, doPrint):
+    # dql", "app", "www.easytravel.com", "app.useractions[avg%hour],app.useractionduration[avg%hour]
+    "Allows you to query and push events from and to Dynatrace, e.g: tell Dynatrace about a Custom Deployment event on a service"
+    if doHelp:
+        print("dtcli evt <action> <entity> <options> [dtUrl] [dtToken]")
+        print("action:  query | push")
+        print("entity:  either entity ids or queries of particular entity types")
+        print("         - ent ABCD1231231: this specifies exactly this entity")
+        print("         - host .*demo.*: this will query the hosts that match that name")
+        print("options: list of name/value pairs. The only mandatory option is the entityId. Here is a list of additional options: ")
+        print("         - start, end: Timestamp of start/end of event")
+        print("         - deploymentName, deploymentVersion, deploymentProject: any textual representation of your deployment")
+        print("         - source: should be the name of your deployment automation tool or CI/CD pipeline, e.g: Jenkins, Electric Cloud, AWS CodeDeploy ...")
+        print("         - ciBackLink, remediationAction: links to the pipeline or remedating action")
+        print("         - any other name/value pair will be passed as custom properties")
+        print("Examples:")
+        print("===================")
+        print("dtcli evt query")
+        print("dtcli evt query ent ABCDEF12345")
+        print("dtcli evt query host .*demo.*")
+        print("dtcli evt push ent ABCDEF12345")
+        print("dtcli evt push host .*demo.*")
+        print("dtcli evt push host tags/Environment=Staging deploymentName=StageDeployment deploymentVersion=1.1")
+        print("dtcli evt push ent ABCDEF12345 start=1234124123000 end=1231230000 deploymentName=StageDeployment deploymentVersion=1.0 deploymentProject=easyTravel source=Jenkins ciBackLink=http://myjenkins remediationAction=http://myremediationaction")
+        print("dtcli evt push ent ABCDEF12345,BCDEF3333 deploymentName=StageDeployment source=Jenkins mycustomproperty=my%20custom%value someotherpropoerty=someothervalue")
+        print("-----")
+        print("dtcli evt push ent ABCDEF12345 http://yourtenant.live.dynatrace.com ASESFEA12ASF")
+    else:
+        actionTypes = ["query","push"]
+        action = None
+        if (len(args) <= 2) or not operator.contains(actionTypes, args[2]):
+            # Didnt provide the correct parameters - show help!
+            doEvent(True, args, doPrint)
+            return;
+        
+        action = operator.indexOf(actionTypes, args[2])
+        if action == 0: #query
+            print("TODO Event Query")
+        elif action == 1: # push
+            # we start with an almost empty event.
+            coreEventFields = ["start","end","deploymentName","deploymentVersion","deploymentProject","source","ciBackLink","remediationAction"]
+            event = {
+                "start" : None,
+                "end" : None,
+                "eventType" : "CUSTOM_DEPLOYMENT",
+                "attachRules" : { "entityIds" : []},
+                "customProperties" : {}
+            }
+        
+            # the minimum requirement is information about the entities
+            if(len(args) <= 4):
+                doEvent(True, args, doPrint)
+                return
+
+            if(args[3] == "ent"):
+                event["attachRules"]["entityIds"].append(args[4])
+            else:
+                foundEntities = doEntity(False, ["dtcli", "ent", args[3], args[4]], False)
+                if(len(foundEntities) <= 0):
+                    raise Exception("Error", "No Entities found that match query")
+                    return;
+                event["attachRules"]["entityIds"] = foundEntities
+            
+            # lets parse through all name/value pairs
+            for arg in args[5::]:
+                nameValue = arg.split("=")
+                if(len(nameValue) != 2):
+                    raise Exception("Error", "Invalid parameter passed: " + arg)
+                    return
+                if(operator.contains(coreEventFields, nameValue[0])):
+                    event[nameValue[0]] = nameValue[1]
+                else:
+                    event["customProperties"][nameValue[0]] = nameValue[1]
+
+            # Make sure that Start / End are correctly set. If not specified we set it to NOW(). If end is not set we set it to start
+            if event["start"] is None:
+                event["start"] = str(datetime.datetime.now().timestamp())
+            if event["end"] is None:
+                event["end"] = str(datetime.datetime.now().timestamp())
+                
+            print(event)
+
+def doTag(doHelp, args):
+    print("TODO Tag")
+    
 
 def getProcessGroups():
     # todo: error handling ...
