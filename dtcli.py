@@ -16,6 +16,7 @@ API_ENDPOINT_PROCESS_GROUPS = "/api/v1/entity/infrastructure/process-groups"
 API_ENDPOINT_HOSTS = "/api/v1/entity/infrastructure/hosts"
 API_ENDPOINT_TIMESERIES = "/api/v1/timeseries"
 API_ENDPOINT_EVENTS = "/api/v1/events"
+API_ENDPOINT_PROBLEMS = "/api/v1/problem"
 
 # Configuration is read from config file if exists. If you want to go back to default simply delete the config file
 dtconfigfilename = os.path.dirname(os.path.abspath(__file__)) + "\\" + "dtconfig.json"
@@ -24,6 +25,8 @@ config = {
     "apitoken"    : "smpltoken",  # YOUR API TOKEN, generated with Dynatrace
     "cacheupdate" : -1            # -1 = NEVER, 0=ALWAYS, X=After X seconds
 }
+
+global_doPrint = False
 
 def getAuthenticationHeader():
     return {"Authorization" : "Api-Token " + config["apitoken"]}
@@ -69,7 +72,7 @@ def parseNameValue(nameValue, defaultName, defaultValue):
     return NameValue(partitions[0], partitions[2])
 
 def queryDynatraceAPI(isGet, apiEndpoint, queryString, postBody):
-    # we first validate if we have the file in cache
+    # we first validate if we have the file in cache. NOTE: we only store HTTP GET data in the Cache. NO POST!
     fullCacheFilename = getCacheFilename(apiEndpoint, queryString)
     readFromCache = False
     if(os.path.isfile(fullCacheFilename)):
@@ -83,32 +86,39 @@ def queryDynatraceAPI(isGet, apiEndpoint, queryString, postBody):
                 readFromCache = True
 
     jsonContent = None
-    if readFromCache:
+    if isGet and readFromCache:
         with open(fullCacheFilename) as json_data:
             jsonContent = json.load(json_data)
     else:
-        myResponse = requests.get(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=True)
-        # print("Request to Dynatrace API ended with: " + str(myResponse.status_code))
+        myResponse = None
+        if isGet:
+            myResponse = requests.get(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=True)
+        else:
+            myResponse = requests.post(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=True, json=postBody)
 
         # For successful API call, response code will be 200 (OK)
         if(myResponse.ok):
             jsonContent = json.loads(myResponse.text)
 
-            # lets ensure the directory is there
-            directory = os.path.dirname(fullCacheFilename)
-            if not os.path.exists(directory):
-                os.makedirs(directory)
+            if isGet:
+                # lets ensure the directory is there
+                directory = os.path.dirname(fullCacheFilename)
+                if not os.path.exists(directory):
+                    os.makedirs(directory)
 
-            # now lets save the content to the cache as well
-            with open(fullCacheFilename, "w+") as output_file:
-                json.dump(jsonContent, output_file)
+                # now lets save the content to the cache as well
+                with open(fullCacheFilename, "w+") as output_file:
+                    json.dump(jsonContent, output_file)
 
         else:
             jsonContent = json.loads(myResponse.text)
+            errorMessage = ""
             if(jsonContent["error"]):
-                print("Dynatrace API ERROR: " + jsonContent["error"]["message"])
+                errorMessage = jsonContent["error"]["message"]
+                if global_doPrint:
+                    print("Dynatrace API returned an error: " + errorMessage)
             jsonContent = None
-            raise Exception("Error", "Dynatrace API returned an error")
+            raise Exception("Error", "Dynatrace API returned an error: " + errorMessage)
 
     return jsonContent
 
@@ -206,8 +216,9 @@ def jsonFindValuesByKeyEx(jsonContent, key, matchValue, returnKey, parentJsonNod
         try:
             matchValue = re.compile(matchValue)
         except:
-            print(matchValue + " is NOT VALID regular expression")
-            sys.exit(1)
+            if global_doPrint:
+                print(matchValue + " is NOT VALID regular expression")
+            raise Exception("Regex Error", matchValue + " is NOT VALID regular expression") 
 
     # our final result list
     result = []
@@ -295,89 +306,117 @@ def filterDataPointsForEntities(jsonDataPoints, entities):
             result[entityDataPoint]["dataPoints"] = jsonDataPoints[entityDataPoint]
     return result
 
-def main():
-    pass
-    readConfig()
+def handleException(e):
+    errorObject = {}
+    if e.args:
+        if len(e.args) == 2:
+            errorObject[e.args[0]] = e.args[1]
+        if len(e.args) == 1:
+            errorObject["error"] = e.args[0]
+    else:
+        errorObject["exception"] = e
 
-    doConfig(False, ["dtcli", "config", "apitoken", "asdf"])
-    # saveConfig()
-    # queryDynatraceAPI(False, API_ENDPOINT_APPLICATIONS, "", "")
-    #doEntity(False, ["dtcli", "ent", "app"], True)
-    #doEntity(False, ["dtcli", "ent", "app", ".*", "displayName"], True)
-    #doEntity(False, ["dtcli", "ent", "app", ".*", "displayName,entityId"], True)
-    #doEntity(False, ["dtcli", "ent", "app", ".*easy.*", "displayName"], True)
-    #doEntity(False, ["dtcli", "ent", "app", "www\.easytravel\.com", "displayName"], True)
-    #doEntity(False, ["dtcli", "ent", "app", "www\.easytravel\.com", "entityId"], True)
-    #doEntity(False, ["dtcli", "ent","host","tags/AWS:Name=et-demo.*", "displayName"], True)
-    #doEntity(False, ["dtcli", "ent","host","tags/AWS:Category?value=DEMOABILITY", "displayName"], True)
-    #doEntity(False, ["dtcli", "ent","host","tags/AWS:Name=.*", "value"], True)
-    #doEntity(False, ["dtcli", "ent","host","tags/AWS:Name=.*", "entityId"], True)
-    #doEntity(False, ["dtcli", "ent", "srv", "agentTechnologyType=JAVA", "displayName"], True)
-    #doEntity(False, ["dtcli", "ent", "srv", "serviceTechnologyTypes=ASP.NET", "displayName"], True)
-    #doEntity(False, ["dtcli", "ent", "srv", "serviceTechnologyTypes=ASP.NET", "entityId"], True)
-    #doEntity(False, ["dtcli", "ent", "pg", "key=customizable", "entityId"], True)
-    #doEntity(False, ["dtcli", "ent", "pg", "key=se-day", "displayName"], True)
-    #doEntity(False, ["dtcli", "ent", "pg", "javaMainClasses=.*Bootstrap.*"], True)
-    #doEntity(False, ["dtcli", "ent", "pg", "cloudFoundryAppNames=.*"], True)
-    #doEntity(False, ["dtcli", "ent", "host", "ipAddresses=54\.86\..*"], True)
-    #doEntity(False, ["dtcli", "ent", "pg", "softwareTechnologies/?type=TOMCAT"], True)
+    print(errorObject)
+    sys.exit(1)
 
-    #doTimeseries(False, ["dtcli", "ts", "list"], True)
-    #doTimeseries(False, ["dtcli", "ts", "list", ".*"], True)
-    #doTimeseries(False, ["dtcli", "ts", "list", "dimensions=APPLICATION"], True)
-    #doTimeseries(False, ["dtcli", "ts", "list", ".*", "displayName"], True)
-    #doTimeseries(False, ["dtcli", "ts", "list", "com.dynatrace.builtin:appmethod.useractionsperminute", "aggregationTypes"], True)
-    #doTimeseries(False, ["dtcli", "ts", "describe", "com.dynatrace.builtin:appmethod.useractionsperminute"], True)
-    #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:service.responsetime"], True)
-    #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:appmethod.useractionsperminute[count%hour]"], True)
-    #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:appmethod.useractionsperminute[count%hour]", "APPLICATION_METHOD-7B11AF03C396DCBC"], True)
-    #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:app.useractionduration[avg%hour]", "APPLICATION-F5E7AEA0AB971DB1"], True)
-
-    #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour],app.useractionduration[avg%hour]"], True)
-    #doDQL(False, ["dtcli", "dql", "host", ".*demo.*", "host.cpu.system[max%hour]"], True)
-    #doDQL(False, ["dtcli", "dql", "host", "tags/AWS:Name=et-demo.*", "host.cpu.system[max%hour]"], True)
-    #doDQL(False, ["dtcli", "dql", "host", "tags/AWS:Name=et-demo.*", "com.dynatrace.builtin:host.cpu.system[max%hour]"], True)
-    #doDQL(False, ["dtcli", "dql", "pg", "cloudFoundryAppNames=.*", "com.dynatrace.builtin:pgi.cpu.usage[avg%hour]"], True)
-    #doDQL(False, ["dtcli", "dql", "srv", "agentTechnologyType=JAVA", "service.responsetime[max%hour]"], True)
-    #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour]"], True)
-    #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour],app.useractionduration[avg%hour]"], True)
-    #doDQL(False, ["dtcli", "dql", "appmethod", ".*Book.*", "appmethod.useractionduration[avg%hour]"], True)    
-    
-    doEvent(False, ["dtcli", "evt", "query"], False)
-    doEvent(False, ["dtcli", "evt", "query", "ent", "APPLICATION-F5E7AEA0AB971DB1"], False)
-    doEvent(False, ["dtcli", "evt", "query", "host", ".*demo.*"], False)
-    doEvent(False, ["dtcli", "evt", "push", "ent", "APPLICATION-F5E7AEA0AB971DB1"], False)
-    doEvent(False, ["dtcli", "evt", "push", "host", ".*demo.*"], False)
-    doEvent(False, ["dtcli", "evt", "push", "host", "tags/AWS:Name=et-demo.*", "deploymentName=StageDeployment", "deploymentVersion=1.1"], False)
-    doEvent(False, ["dtcli", "evt", "push", "host", "tags/AWS:Name=et-demo.*", "start=12312421000", "deploymentName=StageDeployment", "deploymentVersion=1.1", "source=Jenkins", "ciBackLink=http://myjenkins", "remediationAction=http://myremediationaction", "mycustomprop=my%20custom%value"], False)
-
+# the following method is a pure TEST METHOD - allows me to test different combinations of parameters for my differnet use cases
 def mainX():
-    readConfig()
-    command = "usagae"
-    doHelp = False
-    if len(sys.argv) > 1:
-        command = sys.argv[1]
-    if command == "help":
-        doHelp = True
-        if len(sys.argv) > 2:
-            command = sys.argv[2]
-        else:
-            command = "usage"
+    pass
 
-    if command == "ent" :
-        doEntity(doHelp, sys.argv, True)
-    elif command == "ts" :
-        doTimeseries(doHelp, sys.argv, True)
-    elif command == "config" :
-        doConfig(doHelp, sys.argv)
-    elif command == "prob" :
-        doProblem(doHelp, sys.argv)
-    elif command == "evt" :
-        doEvent(doHelp, sys.argv)
-    elif command == "dql" :
-        doDQL(doHelp, sys.argv, True)
-    else :
-        doUsage(sys.argv)
+    try:
+        readConfig()
+
+        # doConfig(False, ["dtcli", "config", "apitoken", "asdf"])
+        # saveConfig()
+        # queryDynatraceAPI(False, API_ENDPOINT_APPLICATIONS, "", "")
+        #doEntity(False, ["dtcli", "ent", "app"], True)
+        #doEntity(False, ["dtcli", "ent", "app", ".*", "displayName"], True)
+        #doEntity(False, ["dtcli", "ent", "app", ".*", "displayName,entityId"], True)
+        #doEntity(False, ["dtcli", "ent", "app", ".*easy.*", "displayName"], True)
+        #doEntity(False, ["dtcli", "ent", "app", "www\.easytravel\.com", "displayName"], True)
+        #doEntity(False, ["dtcli", "ent", "app", "www\.easytravel\.com", "entityId"], True)
+        #doEntity(False, ["dtcli", "ent","host","tags/AWS:Name=et-demo.*", "displayName"], True)
+        #doEntity(False, ["dtcli", "ent","host","tags/AWS:Category?value=DEMOABILITY", "displayName"], True)
+        #doEntity(False, ["dtcli", "ent","host","tags/AWS:Name=.*", "value"], True)
+        #doEntity(False, ["dtcli", "ent","host","tags/AWS:Name=.*", "entityId"], True)
+        #doEntity(False, ["dtcli", "ent", "srv", "agentTechnologyType=JAVA", "displayName"], True)
+        #doEntity(False, ["dtcli", "ent", "srv", "serviceTechnologyTypes=ASP.NET", "displayName"], True)
+        #doEntity(False, ["dtcli", "ent", "srv", "serviceTechnologyTypes=ASP.NET", "entityId"], True)
+        #doEntity(False, ["dtcli", "ent", "pg", "key=customizable", "entityId"], True)
+        #doEntity(False, ["dtcli", "ent", "pg", "key=se-day", "displayName"], True)
+        #doEntity(False, ["dtcli", "ent", "pg", "javaMainClasses=.*Bootstrap.*"], True)
+        #doEntity(False, ["dtcli", "ent", "pg", "cloudFoundryAppNames=.*"], True)
+        #doEntity(False, ["dtcli", "ent", "host", "ipAddresses=54\.86\..*"], True)
+        #doEntity(False, ["dtcli", "ent", "pg", "softwareTechnologies/?type=TOMCAT"], True)
+
+        #doTimeseries(False, ["dtcli", "ts", "list"], True)
+        #doTimeseries(False, ["dtcli", "ts", "list", ".*"], True)
+        #doTimeseries(False, ["dtcli", "ts", "list", "dimensions=APPLICATION"], True)
+        #doTimeseries(False, ["dtcli", "ts", "list", ".*", "displayName"], True)
+        #doTimeseries(False, ["dtcli", "ts", "list", "com.dynatrace.builtin:appmethod.useractionsperminute", "aggregationTypes"], True)
+        #doTimeseries(False, ["dtcli", "ts", "describe", "com.dynatrace.builtin:appmethod.useractionsperminute"], True)
+        #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:service.responsetime"], True)
+        #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:appmethod.useractionsperminute[count%hour]"], True)
+        #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:appmethod.useractionsperminute[count%hour]", "APPLICATION_METHOD-7B11AF03C396DCBC"], True)
+        #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:app.useractionduration[avg%hour]", "APPLICATION-F5E7AEA0AB971DB1"], True)
+
+        #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour],app.useractionduration[avg%hour]"], True)
+        #doDQL(False, ["dtcli", "dql", "host", ".*demo.*", "host.cpu.system[max%hour]"], True)
+        #doDQL(False, ["dtcli", "dql", "host", "tags/AWS:Name=et-demo.*", "host.cpu.system[max%hour]"], True)
+        #doDQL(False, ["dtcli", "dql", "host", "tags/AWS:Name=et-demo.*", "com.dynatrace.builtin:host.cpu.system[max%hour]"], True)
+        #doDQL(False, ["dtcli", "dql", "pg", "cloudFoundryAppNames=.*", "com.dynatrace.builtin:pgi.cpu.usage[avg%hour]"], True)
+        #doDQL(False, ["dtcli", "dql", "srv", "agentTechnologyType=JAVA", "service.responsetime[max%hour]"], True)
+        #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour]"], True)
+        #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour],app.useractionduration[avg%hour]"], True)
+        #doDQL(False, ["dtcli", "dql", "appmethod", ".*Book.*", "appmethod.useractionduration[avg%hour]"], True)    
+    
+        # doEvent(False, ["dtcli", "evt"], False)
+        # doEvent(False, ["dtcli", "evt", "query","from=360", "to=0"], False)
+        # doEvent(False, ["dtcli", "evt", "query", "entityId=APPLICATION-F5E7AEA0AB971DB1"], False)
+        # doEvent(False, ["dtcli", "evt", "query", "host", ".*demo.*"], False)
+        doEvent(False, ["dtcli", "evt", "query", "from=360", "to=0", "app", "www.easytravelb2b.com"], False)
+        # doEvent(False, ["dtcli", "evt", "push", "entityId", "APPLICATION-91A869F0065D216E", "deploymentName=My%20Test%20Deployment", "source=Dynatrace%20CLI", "deploymentVersion=1.0.0"], False)
+        # doEvent(False, ["dtcli", "evt", "push", "host", ".*demo.*"], False)
+        # doEvent(False, ["dtcli", "evt", "push", "host", "tags/AWS:Name=et-demo.*", "deploymentName=StageDeployment", "deploymentVersion=1.1"], False)
+        # doEvent(False, ["dtcli", "evt", "push", "host", "tags/AWS:Name=et-demo.*", "start=12312421000", "deploymentName=StageDeployment", "deploymentVersion=1.1", "source=Jenkins", "ciBackLink=http://myjenkins", "remediationAction=http://myremediationaction", "mycustomprop=my%20custom%value"], False)
+        # doEvent(False, ["dtcli", "evt", "push", "app", "www.easytravel.com", "eventType=CUSTOM_ANNOTATION", "annotationType=DNS route change", "source=OpsControl", "original=myoldurl.com", "changed=mynewurl.com"], False)
+
+    except Exception as e:
+        handleException(e)
+    exit
+
+# The REAL Main Method!
+def main():
+    
+    try:
+        readConfig()
+        command = "usagae"
+        doHelp = False
+        if len(sys.argv) > 1:
+            command = sys.argv[1]
+        if command == "help":
+            doHelp = True
+            if len(sys.argv) > 2:
+                command = sys.argv[2]
+            else:
+                command = "usage"
+
+        if command == "ent" :
+            doEntity(doHelp, sys.argv, True)
+        elif command == "ts" :
+            doTimeseries(doHelp, sys.argv, True)
+        elif command == "config" :
+            doConfig(doHelp, sys.argv)
+        elif command == "prob" :
+            doProblem(doHelp, sys.argv)
+        elif command == "evt" :
+            doEvent(doHelp, sys.argv, True)
+        elif command == "dql" :
+            doDQL(doHelp, sys.argv, True)
+        else :
+            doUsage(sys.argv)
+    except Exception as e:
+        handleException(e)
     exit
 
 def readConfig():
@@ -662,7 +701,8 @@ def doDQL(doHelp, args, doPrint):
             resultEntities = doEntity(False, ["dtcli", "ent", args[2], args[3]], False)
             resultTimeseries = []
             if(resultEntities is None):
-                print("No entities returned for that query")
+                if doPrint:
+                    print("No entities returned for that query")
             else:
                 for entity in resultEntities:
                     # dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%hour] APP-ENTITY
@@ -695,13 +735,15 @@ def doEvent(doHelp, args, doPrint):
         print("         - deploymentName, deploymentVersion, deploymentProject: any textual representation of your deployment")
         print("         - source: should be the name of your deployment automation tool or CI/CD pipeline, e.g: Jenkins, Electric Cloud, AWS CodeDeploy ...")
         print("         - ciBackLink, remediationAction: links to the pipeline or remedating action")
+        print("         - eventType: either CUSTOM_DEPLOYMENT or CUSTOM_ANNOTATION")
         print("         - any other name/value pair will be passed as custom properties")
         print("Examples:")
         print("===================")
         print("dtcli evt query")
-        print("dtcli evt query ent ABCDEF12345")
+        print("dtcli evt query entityId ABCDEF12345")
         print("dtcli evt query host .*demo.*")
-        print("dtcli evt push ent ABCDEF12345")
+        print("dtcli evt query eventType=SERVICE_RESPONSE_TIME_DEGRADED from=60 to=0")
+        print("dtcli evt push entityId ABCDEF12345")
         print("dtcli evt push host .*demo.*")
         print("dtcli evt push host tags/Environment=Staging deploymentName=StageDeployment deploymentVersion=1.1")
         print("dtcli evt push ent ABCDEF12345 start=1234124123000 end=1231230000 deploymentName=StageDeployment deploymentVersion=1.0 deploymentProject=easyTravel source=Jenkins ciBackLink=http://myjenkins remediationAction=http://myremediationaction")
@@ -718,13 +760,49 @@ def doEvent(doHelp, args, doPrint):
         
         action = operator.indexOf(actionTypes, args[2])
         if action == 0: #query
-            print("TODO Event Query")
+            # we need to parse input parameters such as from, to, eventType and entityId
+            query = {"eventType" : None, "from" : None, "to" : None, "entityId" : None}
+            queryFields = ["eventType","from","to","entityId"]
+            entityQueryItems = ["dtcli", "ent"]
+
+            # iterate through all parameters and parse out those that are standard parameters -> rest will be passed to the Entity Query
+            for arg in args[3::]:
+                nameValue = arg.split("=")
+                if(len(nameValue) > 1 and operator.contains(queryFields, nameValue[0])):
+                    query[nameValue[0]] = nameValue[1]
+                else:
+                    entityQueryItems.append(arg)
+
+            # lets call the entity query and take the first entityId
+            if len(entityQueryItems) > 2:
+                resultEntity = doEntity(False, entityQueryItems, doPrint)
+                if resultEntity and len(resultEntity) > 0:
+                    query["entityId"] = resultEntity[0]
+
+            # for timestamps we allow to specify either a full timestamp or Minutes.
+            if query["from"] is not None and int(query["from"]) < 1000000:
+                query["from"] = str(1000 * int(datetime.datetime.now().timestamp() - int(query["from"])*60))
+            if query["to"] is not None and int(query["to"]) < 1000000:
+                query["to"] = str(1000 * int(datetime.datetime.now().timestamp() - int(query["to"])*60))
+
+            # now - lets build the actual query string
+            queryString = ""
+            for objAttr in query:
+                if query[objAttr] is not None:
+                    queryString = queryString + "&" + objAttr + "=" + query[objAttr]
+            
+            if len(queryString) > 0:
+                queryString = queryString[1:]
+            events = queryDynatraceAPI(True, API_ENDPOINT_EVENTS, queryString, "")
+
+            print(events)
         elif action == 1: # push
             # we start with an almost empty event.
-            coreEventFields = ["start","end","deploymentName","deploymentVersion","deploymentProject","source","ciBackLink","remediationAction"]
+            coreEventFields = ["start","end","deploymentName","deploymentVersion","deploymentProject","source","ciBackLink","remediationAction","eventType","annotationType","annotationDescription"]
             event = {
                 "start" : None,
                 "end" : None,
+                "source" : "Dynatrace CLI",
                 "eventType" : "CUSTOM_DEPLOYMENT",
                 "attachRules" : { "entityIds" : []},
                 "customProperties" : {}
@@ -735,7 +813,7 @@ def doEvent(doHelp, args, doPrint):
                 doEvent(True, args, doPrint)
                 return
 
-            if(args[3] == "ent"):
+            if(args[3] == "entityId"):
                 event["attachRules"]["entityIds"].append(args[4])
             else:
                 foundEntities = doEntity(False, ["dtcli", "ent", args[3], args[4]], False)
@@ -751,37 +829,25 @@ def doEvent(doHelp, args, doPrint):
                     raise Exception("Error", "Invalid parameter passed: " + arg)
                     return
                 if(operator.contains(coreEventFields, nameValue[0])):
-                    event[nameValue[0]] = nameValue[1]
+                    event[nameValue[0]] = urllib.parse.unquote(nameValue[1])
                 else:
-                    event["customProperties"][nameValue[0]] = nameValue[1]
+                    event["customProperties"][nameValue[0]] = urllib.parse.unquote(nameValue[1])
 
             # Make sure that Start / End are correctly set. If not specified we set it to NOW(). If end is not set we set it to start
             if event["start"] is None:
-                event["start"] = str(datetime.datetime.now().timestamp())
+                event["start"] = str(1000 * int(datetime.datetime.now().timestamp()))
             if event["end"] is None:
-                event["end"] = str(datetime.datetime.now().timestamp())
-                
-            print(event)
+                event["end"] = str(1000 * int(datetime.datetime.now().timestamp()))
+
+            if doPrint:
+                print(event)
+
+            # lets push the event to Dynatrace            
+            response = queryDynatraceAPI(False, API_ENDPOINT_EVENTS, "", event)
+            if doPrint:
+                print(response)
 
 def doTag(doHelp, args):
     print("TODO Tag")
-    
-
-def getProcessGroups():
-    # todo: error handling ...
-    myResponse = requests.get(url, headers=authHeader, verify=True)
-    print (myResponse.status_code)
-
-    # For successful API call, response code will be 200 (OK)
-    if(myResponse.ok):
-        jData = json.loads(myResponse.text)
-
-        print("The response contains {0} properties".format(len(jData)))
-        print("\n")
-        for key in jData:
-            print (key + " : " + jData[key])
-    else:
-  # If response code is not ok (200), print the resulting http error code with description
-        myResponse.raise_for_status()
 
 if __name__ == "__main__": main()

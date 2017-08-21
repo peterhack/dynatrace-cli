@@ -1,5 +1,7 @@
 dtconfig.txt_old
 jnc47888_live_dynatrace_com/*
+agd*/*
 dtconfig.txt
 dtconfig.json
 tmpfiles/*
+dtconfig_jnc.json
