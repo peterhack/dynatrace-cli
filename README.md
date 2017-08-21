@@ -9,8 +9,8 @@ Here is a schematic overview of how the CLI works:
 ## Supported Use Cases:
 * Query Smartscape entities by any property, e.G: Display Name, Technology Type, Tag, ...
 * Query timeseries data for one or multiple entities and metric types
+* Push Custom Events (Deployments, Configuration Changes, Test Events, ...) to Dynatrace Entities
 * (TBD) Access Dynatrace problem details and add comments
-* (TBD) Push Custom Events (Deployments, Configuration Changes, Test Events, ...) to Dynatrace Entities
 * (TBD) Push Custom Metrics
 
 ## Requirements:
@@ -114,6 +114,25 @@ dynatrace.builtin:app.useractionsperminute', 'com.dynatrace.builtin:appmethod.er
 {'APPLICATION-F5E7AEA0AB971DB1': {'timeseriesId': 'com.dynatrace.builtin:app.useractionduration', 'dataPoints': [[1501779960000, 4474862.904109589], [1501780020000, 6921639.344262295], [1501780080000, 4273
 398.5], [1501780140000, 5725744.966442953], [1501780200000, 4575715.764705882], [1501780260000, 6323631.719298245], [1501780320000, 4294378.218487395], [1501780380000, .......
 
+```
+
+## Examples: Pull and Push Events
+```
+> py dtcli.py evt query from=60 to=0
+{'events': [{'endTime': 9223372036854775807, 'eventId': 6644203702249079783, ...
+
+> py dtcli.py evt query from=60 to=0 host .*demo.*
+['HOST-776CE98524279B25']
+{'events': [{'impactLevel': 'INFRASTRUCTURE', 'deploymentVersion': '1.0', 'eventId': -6917847702530309177, 'entityName': None, 'source': 'Dynatrace CLI', 'tags': None, 'entityId': 'HOST-776CE98524279B25',
+'severityLevel': None, 'endTime': 1503350534000, 'eventType': 'CUSTOM_DEPLOYMENT', 'startTime': 1503350534000, 'eventStatus': 'CLOSED', 'deploymentName': 'My Custom Deployment'}]}
+ 
+> dtcli.py evt query entityId=APPLICATION-F5E7AEA0AB971DB1
+{'events': [{'endTime': 9223372036854775807, 'eventId': 6644203702249079783, ...
+
+> py dtcli.py evt push host .*demo.* deploymentName=My%20Custom%20Deployment deploymentVersion=1.0 source=Dynatrace%20CLI
+{'end': '1503350534000', 'customProperties': {}, 'deploymentVersion': '1.0', 'eventType': 'CUSTOM_DEPLOYMENT', 'start': '1503350534000', 'source': 'Dynatrace CLI', 'deploymentName': 'My Custom Deployment',
+ 'attachRules': {'entityIds': ['HOST-776CE98524279B25']}}
+{'storedEventIds': [-6917847702530309177]}
 ```
 
 ## Examples: Dynatrace Query Language
