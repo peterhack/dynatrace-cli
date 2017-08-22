@@ -48,8 +48,13 @@ option: that really depends on the command. Best is to ask for help to get more 
 ```
 
 ## Examples: Configuration
+Please have a look at the first two configuration examples where I show how to configure a SaaS and a Managed URL. Both URLs are slightly different.
+
 ```
 > py dtcli.py config apitoken MYTOKENFORMYTENANT tenanthost mytenant.live.dynatrace.com
+Current configuration stored in dtconfig.json
+
+> py dtcli.py config apitoken MYTOKENFORMYTENANT tenanthost mytenant.dynatrace-managed.com/e/abcdef-1111-2222-3333-5cdad722e1b8
 Current configuration stored in dtconfig.json
 
 > py dtcli.py config cacheupdate 5
