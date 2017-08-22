@@ -98,9 +98,10 @@ def queryDynatraceAPI(isGet, apiEndpoint, queryString, postBody):
 
         # For successful API call, response code will be 200 (OK)
         if(myResponse.ok):
-            jsonContent = json.loads(myResponse.text)
+            if(len(myResponse.text) > 0):
+                jsonContent = json.loads(myResponse.text)
 
-            if isGet:
+            if isGet and jsonContent is not None:
                 # lets ensure the directory is there
                 directory = os.path.dirname(fullCacheFilename)
                 if not os.path.exists(directory):
@@ -361,25 +362,32 @@ def mainX():
         #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:app.useractionduration[avg%hour]", "APPLICATION-F5E7AEA0AB971DB1"], True)
 
         #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour],app.useractionduration[avg%hour]"], True)
-        #doDQL(False, ["dtcli", "dql", "host", ".*demo.*", "host.cpu.system[max%hour]"], True)
+        # doDQL(False, ["dtcli", "dql", "host", ".*demo.*", "host.cpu.system[max%hour]"], True)
+        # doDQLReport(False, ["dtcli", "dqlr", "host", ".*demo.*", "host.cpu.system[max%hour]"], True)
         #doDQL(False, ["dtcli", "dql", "host", "tags/AWS:Name=et-demo.*", "host.cpu.system[max%hour]"], True)
+        # doDQLReport(False, ["dtcli", "dqlr", "host", "tags/AWS:Name=et-demo.*", "host.cpu.system[max%hour]"], True)
+        # doDQLReport(False, ["dtcli", "dqlr", "host", "tags/AWS:Name=et-demo.*", "host.cpu.system[max%hour],host.cpu.system[avg%hour]"], True)
         #doDQL(False, ["dtcli", "dql", "host", "tags/AWS:Name=et-demo.*", "com.dynatrace.builtin:host.cpu.system[max%hour]"], True)
         #doDQL(False, ["dtcli", "dql", "pg", "cloudFoundryAppNames=.*", "com.dynatrace.builtin:pgi.cpu.usage[avg%hour]"], True)
         #doDQL(False, ["dtcli", "dql", "srv", "agentTechnologyType=JAVA", "service.responsetime[max%hour]"], True)
         #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour]"], True)
         #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour],app.useractionduration[avg%hour]"], True)
+        #doDQLReport(False, ["dtcli", "dql", "app", "www.easytravel.com", "com.dynatrace.builtin:app.useractions[count%hour],com.dynatrace.builtin:app.useractionduration[avg%hour]"], True)
         #doDQL(False, ["dtcli", "dql", "appmethod", ".*Book.*", "appmethod.useractionduration[avg%hour]"], True)    
     
         # doEvent(False, ["dtcli", "evt"], False)
         # doEvent(False, ["dtcli", "evt", "query","from=360", "to=0"], False)
         # doEvent(False, ["dtcli", "evt", "query", "entityId=APPLICATION-F5E7AEA0AB971DB1"], False)
         # doEvent(False, ["dtcli", "evt", "query", "host", ".*demo.*"], False)
-        doEvent(False, ["dtcli", "evt", "query", "from=360", "to=0", "app", "www.easytravelb2b.com"], False)
+        # doEvent(False, ["dtcli", "evt", "query", "from=360", "to=0", "app", "www.easytravelb2b.com"], False)
         # doEvent(False, ["dtcli", "evt", "push", "entityId", "APPLICATION-91A869F0065D216E", "deploymentName=My%20Test%20Deployment", "source=Dynatrace%20CLI", "deploymentVersion=1.0.0"], False)
         # doEvent(False, ["dtcli", "evt", "push", "host", ".*demo.*"], False)
         # doEvent(False, ["dtcli", "evt", "push", "host", "tags/AWS:Name=et-demo.*", "deploymentName=StageDeployment", "deploymentVersion=1.1"], False)
         # doEvent(False, ["dtcli", "evt", "push", "host", "tags/AWS:Name=et-demo.*", "start=12312421000", "deploymentName=StageDeployment", "deploymentVersion=1.1", "source=Jenkins", "ciBackLink=http://myjenkins", "remediationAction=http://myremediationaction", "mycustomprop=my%20custom%value"], False)
         # doEvent(False, ["dtcli", "evt", "push", "app", "www.easytravel.com", "eventType=CUSTOM_ANNOTATION", "annotationType=DNS route change", "source=OpsControl", "original=myoldurl.com", "changed=mynewurl.com"], False)
+
+        # doTag(False, ["dtcli","tag","srv","JourneyService","MyFirstTag,MySecondTag"])
+        # doTag(False, ["dtcli","tag","app","entityId=APPLICATION-08EBD5603755FA87","MyEasyTravelAppTag"])
 
     except Exception as e:
         handleException(e)
@@ -413,6 +421,8 @@ def main():
             doEvent(doHelp, sys.argv, True)
         elif command == "dql" :
             doDQL(doHelp, sys.argv, True)
+        elif command == "dqlr" :
+            doDQLReport(doHelp, sys.argv, True)
         else :
             doUsage(sys.argv)
     except Exception as e:
@@ -571,6 +581,8 @@ def doTimeseries(doHelp, args, doPrint):
                         for entity in measureResult:
                             measureResult[entity]["entityDisplayName"] = jsonContentResult["entities"][entity]
                             measureResult[entity]["unit"] = jsonContentResult["unit"]
+                            measureResult[entity]["aggregationType"] = jsonContentResult["aggregationType"]
+                            measureResult[entity]["resolutionInMillisUTC"] = jsonContentResult["resolutionInMillisUTC"]
                             measureResult[entity]["timeseriesId"] = jsonContentResult["timeseriesId"]
 
                         if doPrint:
@@ -645,6 +657,91 @@ def doCheckTempConfigParams(args, argIndex):
         config["tenanthost"] = args[argIndex]     
     if(len(args) > argIndex+1):
         config["apitoken"] = args[argIndex+1]     
+
+def doDQLReport(doHelp, args, doPrint):
+    "Simliar to DQL but DQLR will generate an HTML Report for eachi timeseries"
+    resultTimeseries = doDQL(doHelp, args, False)
+    if resultTimeseries is None:
+        raise Exception("Error", "No timeseries returned to create report for")
+
+    # this is for our highchart series objects
+    seriesListForReport = []
+
+    # now we iterate through the data that comes back from DQL - here is the rough format
+    # [
+    #   {'ENTITY1_ID' : 
+    #      {
+    #        'timeseriesId' : 'com.dynatrace.builtin:host.cpu.system',
+    #        'unit' : '%',
+    #        'entityDisplayName' : 'Your Entity Name',
+    #        'dataPoints' : [[TIMESTAMP, VALUE],[TIMESTAMP,VALUE],...]
+    #      }
+    #   },
+    #   {'ENTITY2_ID' : ....}
+    # ]
+
+    allSeriesForReport = {}
+
+    for result in resultTimeseries:
+        for entityId in result: # this should only return one element anyway - which is our entityId
+            entityObject = result[entityId]
+            timeseriesId = entityObject["timeseriesId"];
+            unit = entityObject["unit"]
+            aggregationType = entityObject["aggregationType"]
+            entityDisplayName = entityObject["entityDisplayName"];
+            dataPoints = entityObject["dataPoints"]
+
+            # every timeseries is handled differently and will end up in its own chart. 
+            timeseriesName = timeseriesId + "(" + aggregationType + ")"
+            if timeseriesName in allSeriesForReport:
+                seriesListForReport = allSeriesForReport[timeseriesName]
+            else:
+                seriesListForReport = []
+                allSeriesForReport[timeseriesName] = seriesListForReport
+
+            # now we simply take the data points and put them into our highchart object
+            seriesEntryForReport = { "name" : entityDisplayName, "data" : []}
+            for dataPoint in dataPoints:
+                # lets do some conversion from timestamp to actual time and replace None with null
+                dt = datetime.datetime.fromtimestamp(dataPoint[0]/1000)
+                dataPoint[0] = str(dt)
+                if dataPoint[1] is None:
+                    dataPoint[1] = "null"
+                seriesEntryForReport["data"].append(dataPoint)
+
+            seriesListForReport.append(seriesEntryForReport)
+            allSeriesForReport[timeseriesName] = seriesListForReport
+            allSeriesForReport[timeseriesName + "_unit"] = unit
+
+
+    # read our overall html template
+    reportTemplateFile = open(os.path.dirname(os.path.abspath(__file__)) + "\\report\\report.html", "r")
+    reportTemplateStr = reportTemplateFile.read()
+    reportTemplateFile.close()
+
+    # now lets generate the report itself - we read the chart template and the report template from our report directory
+    chartTemplateFile = open(os.path.dirname(os.path.abspath(__file__)) + "\\report\\r_template.html", "r")
+    chartTemplateStr = chartTemplateFile.read()
+    chartTemplateFile.close()
+
+    for timeseriesReport in allSeriesForReport: 
+        timeseriesReportStr = chartTemplateStr.replace("seriesPlaceholder", str(allSeriesForReport[timeseriesReport]))
+        timeseriesReportStr = timeseriesReportStr.replace("yaxisPlaceholder", allSeriesForReport[timeseriesName + "_unit"])
+        timeseriesReportStr = timeseriesReportStr.replace("titlePlaceholder", timeseriesReport)
+        timeseriesReportStr = timeseriesReportStr.replace("uniqueChartnamePlaceholder", timeseriesReport)
+        reportTemplateStr = reportTemplateStr.replace("<div id=\"placeholder\"/>", timeseriesReportStr)
+
+    # now lets write the final report back to disk - also set the title
+    dqlQueryString = " ".join(args[2:])
+    reportTemplateStr = reportTemplateStr.replace("reportTitlePlaceholder", "Generated for DQL: " + dqlQueryString)
+    reportFileName = os.path.dirname(os.path.abspath(__file__)) + "\\dqlreport.html"
+
+    finalReportFile = open(reportFileName, "w")
+    finalReportFile.write(reportTemplateStr)
+    finalReportFile.close()
+
+    if doPrint:
+        print("Generated report for " + dqlQueryString + " in: " + reportFileName)
 
 def doDQL(doHelp, args, doPrint):
     # dql", "app", "www.easytravel.com", "app.useractions[avg%hour],app.useractionduration[avg%hour]
@@ -728,10 +825,10 @@ def doEvent(doHelp, args, doPrint):
         print("dtcli evt <action> <entity> <options> [dtUrl] [dtToken]")
         print("action:  query | push")
         print("entity:  either entity ids or queries of particular entity types")
-        print("         - ent ABCD1231231: this specifies exactly this entity")
+        print("         - entitiyId HOST-776CE98524279B25: this specifies exactly this entity")
         print("         - host .*demo.*: this will query the hosts that match that name")
         print("options: list of name/value pairs. The only mandatory option is the entityId. Here is a list of additional options: ")
-        print("         - start, end: Timestamp of start/end of event")
+        print("         - start, end: Start/End of event. You can either specify a timestamp or specify 0(=Now), 60(=60 Minutes Ago) ... ")
         print("         - deploymentName, deploymentVersion, deploymentProject: any textual representation of your deployment")
         print("         - source: should be the name of your deployment automation tool or CI/CD pipeline, e.g: Jenkins, Electric Cloud, AWS CodeDeploy ...")
         print("         - ciBackLink, remediationAction: links to the pipeline or remedating action")
@@ -740,16 +837,16 @@ def doEvent(doHelp, args, doPrint):
         print("Examples:")
         print("===================")
         print("dtcli evt query")
-        print("dtcli evt query entityId ABCDEF12345")
+        print("dtcli evt query entityId HOST-776CE98524279B25")
         print("dtcli evt query host .*demo.*")
         print("dtcli evt query eventType=SERVICE_RESPONSE_TIME_DEGRADED from=60 to=0")
-        print("dtcli evt push entityId ABCDEF12345")
+        print("dtcli evt push entityId HOST-776CE98524279B25")
         print("dtcli evt push host .*demo.*")
         print("dtcli evt push host tags/Environment=Staging deploymentName=StageDeployment deploymentVersion=1.1")
-        print("dtcli evt push ent ABCDEF12345 start=1234124123000 end=1231230000 deploymentName=StageDeployment deploymentVersion=1.0 deploymentProject=easyTravel source=Jenkins ciBackLink=http://myjenkins remediationAction=http://myremediationaction")
-        print("dtcli evt push ent ABCDEF12345,BCDEF3333 deploymentName=StageDeployment source=Jenkins mycustomproperty=my%20custom%value someotherpropoerty=someothervalue")
+        print("dtcli evt push ent HOST-776CE98524279B25 start=1234124123000 end=0 deploymentName=StageDeployment deploymentVersion=1.0 deploymentProject=easyTravel source=Jenkins ciBackLink=http://myjenkins remediationAction=http://myremediationaction")
+        print("dtcli evt push ent HOST-776CE98524279B25,APPLICATION-F5E7AEA0AB971DB1 deploymentName=StageDeployment source=Jenkins mycustomproperty=my%20custom%value someotherpropoerty=someothervalue")
         print("-----")
-        print("dtcli evt push ent ABCDEF12345 http://yourtenant.live.dynatrace.com ASESFEA12ASF")
+        print("dtcli evt push entityId HOST-776CE98524279B25 http://yourtenant.live.dynatrace.com YOURAPITOKEN")
     else:
         actionTypes = ["query","push"]
         action = None
@@ -775,9 +872,11 @@ def doEvent(doHelp, args, doPrint):
 
             # lets call the entity query and take the first entityId
             if len(entityQueryItems) > 2:
-                resultEntity = doEntity(False, entityQueryItems, doPrint)
+                resultEntity = doEntity(False, entityQueryItems, False)
                 if resultEntity and len(resultEntity) > 0:
                     query["entityId"] = resultEntity[0]
+                else:
+                    raise Exception("Error", "No Entities found that match query")
 
             # for timestamps we allow to specify either a full timestamp or Minutes.
             if query["from"] is not None and int(query["from"]) < 1000000:
@@ -834,6 +933,10 @@ def doEvent(doHelp, args, doPrint):
                     event["customProperties"][nameValue[0]] = urllib.parse.unquote(nameValue[1])
 
             # Make sure that Start / End are correctly set. If not specified we set it to NOW(). If end is not set we set it to start
+            if event["start"] is not None and int(event["start"]) < 1000000:
+                event["start"] = str(1000 * int(datetime.datetime.now().timestamp() - int(event["start"])*60))
+            if event["end"] is not None and int(event["end"]) < 1000000:
+                event["end"] = str(1000 * int(datetime.datetime.now().timestamp() - int(event["end"])*60))
             if event["start"] is None:
                 event["start"] = str(1000 * int(datetime.datetime.now().timestamp()))
             if event["end"] is None:
@@ -848,6 +951,47 @@ def doEvent(doHelp, args, doPrint):
                 print(response)
 
 def doTag(doHelp, args):
-    print("TODO Tag")
+    "Allows you to put tags on one or more entites"
+    if doHelp:
+        if(doPrint):
+            print("dtcli tag type <entityId|query> <list of tags>")
+            print("type: app | srv | pg | host")
+            print("Examples:")
+            print("===================")
+            print("dtcli tag app .*easyTravel.* easyTravelAppTag")
+            print("dtcli tag srv JourneyService journeyServiceTag,serviceTag")
+            print("dtcli tag app entityId=APPLICATION-F5E7AEA0AB971DB1 easyTravelAppTag")
+            print("--------------------")
+            print("dtcli tag app .*easyTravel.* easyTravelAppTag tenant.live.dynatrace.com APITOKEN")
+    else:
+        entityTypes = ["app","srv","pg","host"]
+        entityEndpoints = [API_ENDPOINT_APPLICATIONS, API_ENDPOINT_SERVICES, API_ENDPOINT_PROCESS_GROUPS, API_ENDPOINT_HOSTS]
+        if (len(args) <= 4) or not operator.contains(entityTypes, args[2]):
+            # Didnt provide the correct parameters - show help!
+            doTag(True, args, doPrint)
+        else:
+            # lets check our special token param
+            doCheckTempConfigParams(args, 5)
+
+            # Now we either parse the list of entityIds from the arguments or we query for them by using doEntity
+            apiEndpoint = operator.getitem(entityEndpoints, operator.indexOf(entityTypes, args[2]))
+            tagableEntities = []
+            if args[3].startswith("entityId="):
+                entityString = args[3][9:]
+                tagableEntities = entityString.split(",")
+            else:
+                tagableEntities = doEntity(False, ["dtcli", "ent", args[2], args[3]], False)
+
+            # do we have any entities to tag?
+            if len(tagableEntities) == 0:
+                raise Exception("Error", "No entities specified or query doesnt match any entites")
+
+            # lets tag em
+            tags = { "tags" : args[4].split(",")}
+            for entity in tagableEntities:
+                queryDynatraceAPI(False, apiEndpoint + "/" + entity, "", tags)
+
+            return tagableEntities;
+    return None    
 
 if __name__ == "__main__": main()
