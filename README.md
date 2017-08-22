@@ -6,9 +6,17 @@ The CLI also caches queried data (Smartscape and Timeseries) on the local disk. 
 Here is a schematic overview of how the CLI works:
 ![](./images/dtclioverview.png)
 
+And here is a sample HTML report that can be generated with the DQL (Dynatrace Query Language) report option:
+```
+> py dtcli.py dqlr host tags/AWS:Name=et-demo.* host.cpu.system[max%hour],host.cpu.system[avg%hour]
+Generated report for host tags/AWS:Name=et-demo.* host.cpu.system[max%hour],host.cpu.system[avg%hour] in: dqlreport.html
+```
+![](./images/sampledqlreport.png)
+
 ## Supported Use Cases:
 * Query Smartscape entities by any property, e.G: Display Name, Technology Type, Tag, ...
-* Query timeseries data for one or multiple entities and metric types
+* Query timeseries data for one or multiple entities and metric types -> using DQL (Dynatrace Query Language)
+* Generate HTML Reports of timeseries data based on DQL Query
 * Push Custom Events (Deployments, Configuration Changes, Test Events, ...) to Dynatrace Entities
 * (TBD) Access Dynatrace problem details and add comments
 * (TBD) Push Custom Metrics
@@ -140,7 +148,10 @@ dynatrace.builtin:app.useractionsperminute', 'com.dynatrace.builtin:appmethod.er
 {'storedEventIds': [-6917847702530309177]}
 ```
 
-## Examples: Dynatrace Query Language
+## Examples: Dynatrace Query Language (DQL)
+
+The DQL (Dynatrace Query Language) can either be used to query the raw JSON data. You can also replace the command "dql" with "dqlr" which will generate an HTML report based on the HTML templates in the report subdirectory. An example of that report can be seen at the beginning of this readme
+
 ```
 > py dtcli.py dql app www.easytravel.com app.useractions[count%hour],app.useractionduration[avg%hour]
 [{'APPLICATION-F5E7AEA0AB971DB1': {'entityDisplayName': 'www.easytravel.com', 'timeseriesId': 'com.dynatrace.builtin:app.useractions', 'dataPoints': [[1501788420000, 103.0], [1501788480000, 143.0], [150178
@@ -153,4 +164,8 @@ dynatrace.builtin:app.useractionsperminute', 'com.dynatrace.builtin:appmethod.er
 0.0], [1501792860000, 3709000.0], [1501792920000, 727200.0], [1501792980000, 1670800.0], [1501793040000, 791666.6666666666], [1501793100000, 372200.0], [1501793160000, 1700500.0], [1501793220000, 636285.71
 42857143], [1501793280000, 989250.0], [1501793340000, 1517000.0], [1501793400000, 872250.0], [1501793460000, 893750.0], [1501793520000, 358333.3333333333], [1501793580000, 324000.0], [1501793640000, 953000 ...
 
+> py dtcli.py dqlr host tags/AWS:Name=et-demo.* host.cpu.system[max%hour],host.cpu.system[avg%hour]
+Generated report for host tags/AWS:Name=et-demo.* host.cpu.system[max%hour],host.cpu.system[avg%hour] in: dqlreport.html
 ```
+![](./images/sampledqlreport.png)
+
