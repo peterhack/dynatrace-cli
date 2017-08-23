@@ -14,10 +14,11 @@ Generated report for host tags/AWS:Name=et-demo.* host.cpu.system[max%hour],host
 ![](./images/sampledqlreport.png)
 
 ## Supported Use Cases:
-* Query Smartscape entities by any property, e.G: Display Name, Technology Type, Tag, ...
+* Query Smartscape entities (host, process group, service, app) by any property, e.G: Display Name, Technology Type, Tag, ...
 * Query timeseries data for one or multiple entities and metric types -> using DQL (Dynatrace Query Language)
 * Generate HTML Reports of timeseries data based on DQL Query
-* Push Custom Events (Deployments, Configuration Changes, Test Events, ...) to Dynatrace Entities
+* Push Custom Events (Deployments, Configuration Changes, Test Events, ...) to monitored entities
+* Define Custom Tags for entities
 * (TBD) Access Dynatrace problem details and add comments
 * (TBD) Push Custom Metrics
 
@@ -146,6 +147,15 @@ dynatrace.builtin:app.useractionsperminute', 'com.dynatrace.builtin:appmethod.er
 {'end': '1503350534000', 'customProperties': {}, 'deploymentVersion': '1.0', 'eventType': 'CUSTOM_DEPLOYMENT', 'start': '1503350534000', 'source': 'Dynatrace CLI', 'deploymentName': 'My Custom Deployment',
  'attachRules': {'entityIds': ['HOST-776CE98524279B25']}}
 {'storedEventIds': [-6917847702530309177]}
+```
+
+## Examples: Define custom tags for entities
+```
+> py dtcli.py tag app .*easyTravel.* easyTravelAppTag
+
+> py dtcli.py tag srv JourneyService journeyServiceTag,serviceTag
+
+> py dtcli.py tag app entityId=APPLICATION-F5E7AEA0AB971DB1 easyTravelAppTag
 ```
 
 ## Examples: Dynatrace Query Language (DQL)
