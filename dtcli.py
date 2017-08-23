@@ -423,6 +423,8 @@ def main():
             doDQL(doHelp, sys.argv, True)
         elif command == "dqlr" :
             doDQLReport(doHelp, sys.argv, True)
+        elif command == "tag":
+            doTag(doHelp, sys.argv, True)
         else :
             doUsage(sys.argv)
     except Exception as e:
@@ -447,7 +449,7 @@ def doUsage(args):
     print("Usage: Dynatrace Command Line Interface")
     print("=========================================")
     print("dtcli <command> <options>")
-    print("commands: ent=entities, ts=timerseries, prob=problems, evt=events, dql=Dynatrace Query Language, config")
+    print("commands: ent=entities, ts=timerseries, prob=problems, evt=events, dql=Dynatrace Query Language, dqlr=DQL Reporting, tag=tagging, config")
     print("=========================================")
     print("To configure access token and Dynatrace REST Endpoint use command 'config'")
     print("For more information on a command use: dtcli help <command>")
@@ -950,7 +952,7 @@ def doEvent(doHelp, args, doPrint):
             if doPrint:
                 print(response)
 
-def doTag(doHelp, args):
+def doTag(doHelp, args, doPrint):
     "Allows you to put tags on one or more entites"
     if doHelp:
         if(doPrint):
