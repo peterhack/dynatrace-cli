@@ -27,12 +27,13 @@ config = {
 }
 
 global_doPrint = False
+global_timestampcheck = datetime.datetime(2000, 1, 1, ).timestamp()   # if timestamp int values are larger than this we assume it is a timestamp
 
 def getAuthenticationHeader():
     return {"Authorization" : "Api-Token " + config["apitoken"]}
 
 def getRequestUrl(apiEndpoint, queryString):
-    requestUrl = "https://" + config["tenanthost"] + apiEndpoint;
+    requestUrl = "https://" + config["tenanthost"] + apiEndpoint
     if(queryString is not None and len(queryString) > 0):
         requestUrl += "?" + queryString
     return requestUrl
@@ -40,7 +41,7 @@ def getRequestUrl(apiEndpoint, queryString):
 def getCacheFilename(apiEndpoint, queryString):
     fullCacheFilename = os.path.dirname(os.path.abspath(__file__)) + "\\" + config["tenanthost"].replace(".", "_") + "\\" + apiEndpoint.replace("/","_")
     if(queryString is not None and len(queryString) > 0):
-        fullCacheFilename += "\\" + urllib.parse.unquote(queryString).replace(".", "_").replace(":", "_").replace("?", "_").replace("&", "_");
+        fullCacheFilename += "\\" + urllib.parse.unquote(queryString).replace(".", "_").replace(":", "_").replace("?", "_").replace("&", "_")
     fullCacheFilename += ".json"
 
     return fullCacheFilename
@@ -54,6 +55,58 @@ class NameValue:
             json.load(defaultValue)
         else:
             self.value = defaultValue
+
+class TimeframeDef:
+    def __init__(self, timeframe):
+        "parses the string. allowed values are hour,2hours,6hours,day,week,month - also allowed are custom event names, 0=Now, X=Minutes prior to Now or a full UTC Timestamp"
+        "Also allows two timeframes in the form of: firsttimestamp:secondtimestamp -> example: 2hours:hour, 120:60"
+        self.timeframestr = timeframe
+
+        if timeframe is None:
+            self.timeframestr = [None]
+            return
+
+        self.type = []
+        self.timestamp = []
+        allowedConsts = ["hour", "2hours", "6hours", "day", "week", "month"]
+
+        self.timeframestr = timeframe.split(":")
+        for timeframe in self.timeframestr:
+            if operator.contains(allowedConsts, timeframe):
+                self.type.append("relative")
+            elif timeframe.isdigit():
+                # if it is an int check whether it is a number we convert relative to now or whether it is a full timestamp
+                tsint = int(timeframe)
+                if tsint < global_timestampcheck:
+                    self.timestamp.append(1000 * int(datetime.datetime.now().timestamp() - tsint*60))
+                else:
+                    self.timestamp.append(int(timeframe))
+                
+                self.type.append("absolute")
+            else:
+                # has to be a custom event name
+                # TODO - query events and try to find the timestamp of this event
+                self.timestamp.append(None)
+                self.type.append(None)
+
+    def isTimerange(self):
+        return self.isValid() and len(self.timeframestr) > 1
+
+    def timeframeAsStr(self, frame=0):
+        if self.isRelative(frame):
+            return self.timeframestr[frame]
+
+        return str(self.timestamp[frame])
+
+    def isValid(self, frame=0):
+        return self.timeframestr[frame] is not None
+
+    def isRelative(self, frame=0):
+        return self.type[frame] == "relative"
+
+    def isAbsolute(self, frame=0):
+        return self.type[frame] == "absolute"
+
 
 # helper functions
 def parseNameValue(nameValue, defaultName, defaultValue):
@@ -184,6 +237,9 @@ def getAttributeFromFirstMatch(attributeName, objectlist):
     "attributeName can also be a comma separated list. in that case the function returns an array of values of the object that first matches ALL attribute names"
     attributeNames = attributeName.split(",")
 
+    if attributeName == "*":
+        return objectlist[len(objectlist)-1]
+
     for obj in objectlist:
         try:
             attributeValues = []
@@ -296,7 +352,7 @@ def matchEntityName(entityName, listOfEntities):
         if(entityName in listOfEntities):
             return True
 
-    return False;
+    return False
 
 def filterDataPointsForEntities(jsonDataPoints, entities):
     # Will iterate through the Data Points and return those metrics that match the entities. If entities == None we return all matching entities
@@ -325,6 +381,17 @@ def mainX():
     pass
 
     try:
+        # Test some of the TimeframeDefs
+        tfd = TimeframeDef("hour")
+        tfd = TimeframeDef("2hours")
+        tfd = TimeframeDef("60")
+        tfd = TimeframeDef("120:60")
+        tfd = TimeframeDef("1503944553000")
+        tfd = TimeframeDef("1503944053000:1503944553000")
+        tfd = TimeframeDef("starttest:endtest")
+        tfd = TimeframeDef("starttest:0")
+
+
         readConfig()
 
         # doConfig(False, ["dtcli", "config", "apitoken", "asdf"])
@@ -361,7 +428,7 @@ def mainX():
         #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:appmethod.useractionsperminute[count%hour]", "APPLICATION_METHOD-7B11AF03C396DCBC"], True)
         #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:app.useractionduration[avg%hour]", "APPLICATION-F5E7AEA0AB971DB1"], True)
 
-        #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour],app.useractionduration[avg%hour]"], True)
+        # doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "appmethod.useractionsperminute[count%hour],app.useractionduration[avg%hour]"], True)
         # doDQL(False, ["dtcli", "dql", "host", ".*demo.*", "host.cpu.system[max%hour]"], True)
         # doDQLReport(False, ["dtcli", "dqlr", "host", ".*demo.*", "host.cpu.system[max%hour]"], True)
         #doDQL(False, ["dtcli", "dql", "host", "tags/AWS:Name=et-demo.*", "host.cpu.system[max%hour]"], True)
@@ -373,7 +440,9 @@ def mainX():
         #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour]"], True)
         #doDQL(False, ["dtcli", "dql", "app", "www.easytravel.com", "app.useractions[count%hour],app.useractionduration[avg%hour]"], True)
         #doDQLReport(False, ["dtcli", "dql", "app", "www.easytravel.com", "com.dynatrace.builtin:app.useractions[count%hour],com.dynatrace.builtin:app.useractionduration[avg%hour]"], True)
-        #doDQL(False, ["dtcli", "dql", "appmethod", ".*Book.*", "appmethod.useractionduration[avg%hour]"], True)    
+        # doDQL(False, ["dtcli", "dql", "appmethod", ".*Book.*", "appmethod.useractionduration[avg%hour]"], True)    
+        # doDQL(False, ["dtcli", "dql", "appmethod", ".*Book.*", "appmethod.useractionduration[avg%60:0]"], True)    
+        # doDQL(False, ["dtcli", "dql", "appmethod", ".*Book.*", "appmethod.useractionduration[avg%1503295559000:1503338674000]"], True)
     
         # doEvent(False, ["dtcli", "evt"], False)
         # doEvent(False, ["dtcli", "evt", "query","from=360", "to=0"], False)
@@ -384,7 +453,11 @@ def mainX():
         # doEvent(False, ["dtcli", "evt", "push", "host", ".*demo.*"], False)
         # doEvent(False, ["dtcli", "evt", "push", "host", "tags/AWS:Name=et-demo.*", "deploymentName=StageDeployment", "deploymentVersion=1.1"], False)
         # doEvent(False, ["dtcli", "evt", "push", "host", "tags/AWS:Name=et-demo.*", "start=12312421000", "deploymentName=StageDeployment", "deploymentVersion=1.1", "source=Jenkins", "ciBackLink=http://myjenkins", "remediationAction=http://myremediationaction", "mycustomprop=my%20custom%value"], False)
-        # doEvent(False, ["dtcli", "evt", "push", "app", "www.easytravel.com", "eventType=CUSTOM_ANNOTATION", "annotationType=DNS route change", "source=OpsControl", "original=myoldurl.com", "changed=mynewurl.com"], False)
+        # doEvent(False, ["dtcli", "evt", "push", "app", "www.easytravel.com", "eventType=CUSTOM_ANNOTATION", "annotationType=DNSChange", "annotationDescription=RouteChanged", "source=OpsControl", "original=myoldurl.com", "changed=mynewurl.com"], False)
+        # doEvent(False, ["dtcli", "evt", "push", "app", "www.easytravel.com", "eventType=CUSTOM_ANNOTATION", "start=60", "end=30", "annotationType=DNSChange", "annotationDescription=RouteChanged", "source=OpsControl", "original=myoldurl.com", "changed=mynewurl.com"], False)
+        # doEvent(False, ["dtcli", "evt", "push", "srv", "tags/?key=v123", "deploymentName=MemoryChange", "deploymentVersion=1.22", "source=Manual", "OldMaxMem=1GB", "NewMaxMem=2GB"], False)
+        # doEvent(False, ["dtcli", "evt", "push", "srv", "tags/?key=v123", "eventType=CUSTOM_ANNOTATION", "annotationType=MemoryChange", "annotationDescription=Increased", "source=Manual", "OldMaxMem=1GB", "NewMaxMem=2GB"], False)
+        # doEvent(False, ["dtcli", "evt", "push", "app", "www.easytravel.com", "eventType=CUSTOM_ANNOTATION", "annotationType=MemoryChange", "annotationDescription=Increased", "source=Manual", "OldMaxMem=1GB", "NewMaxMem=2GB"], False)
 
         # doTag(False, ["dtcli","tag","srv","JourneyService","MyFirstTag,MySecondTag"])
         # doTag(False, ["dtcli","tag","app","entityId=APPLICATION-08EBD5603755FA87","MyEasyTravelAppTag"])
@@ -458,7 +531,7 @@ def doEntity(doHelp, args, doPrint):
     "Allows you to query information about entities"
     if doHelp:
         if(doPrint):
-            print("dtcli ent <type> <query> <resulttag>")
+            print("dtcli ent <type> <query> <resulttags|*>")
             print("type: app | srv | pg | host")
             print("Examples:")
             print("===================")
@@ -467,6 +540,7 @@ def doEntity(doHelp, args, doPrint):
             print("dtcli ent host tag/AWS:Name=et-demo-1-win1")
             print("dtcli ent host tag/Name=.*demo.*")
             print("dtcli ent srv serviceTechnologyTypes=ASP.NET discoveredName")
+            print("dtcli ent srv tag/?key=v123 *")
             print("dtcli ent app .*easyTravel.* displayName")
     else:
         entityTypes = ["app","srv","pg","host"]
@@ -518,6 +592,9 @@ def doTimeseries(doHelp, args, doPrint):
             print("dtcli ts query com.dynatrace.builtin:appmethod.useractionduration")
             print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%hour]")
             print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%hour] APP-ENTITY")
+            print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%2hour] APP-ENTITY")
+            print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%120:60] APP-ENTITY")
+            print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%custDeployEvent] APP-ENTITY")
     else:
         actionTypes = ["list","query","push","describe"]
         action = None
@@ -557,7 +634,7 @@ def doTimeseries(doHelp, args, doPrint):
                 aggregation = "avg"
                 timeframe = "hour"
 
-                # "Allowed strings are: justtimeseries, timeseries[aggregagtion],, timeseries[aggregation%timeframe]"
+                # "Allowed strings are: justtimeseries, timeseries[aggregagtion],, timeseries[aggregation%timeframe], timeseries[aggregation%timeframe1:timeframe2]"
                 # now we check for name=value pair or just value
                 beginBracket = timeseriesId.find("[")
                 endBracket = timeseriesId.find("]")
@@ -570,8 +647,21 @@ def doTimeseries(doHelp, args, doPrint):
                     if(len(configParts[2]) > 0):
                         timeframe = configParts[2]
 
+
+                # check what the timeframe parameter is
+                timeframedef = TimeframeDef(timeframe)
+                if timeframedef.isValid():
+                    if timeframedef.isRelative():
+                        timeframedef.queryString = "&relativeTime=" + timeframedef.timeframeAsStr()
+                    if timeframedef.isAbsolute():
+                        timeframedef.queryString = "&startTimestamp=" + timeframedef.timeframeAsStr(0)
+                        if timeframedef.isTimerange():
+                            timeframedef.queryString += "&endTimestamp=" + timeframedef.timeframeAsStr(1)
+                else:
+                    timeframedef.queryString = ""
+
                 # now lets query the timeframe API
-                jsonContent = queryDynatraceAPI(True, API_ENDPOINT_TIMESERIES, "timeseriesId=" + timeseriesId + "&relativeTime=" + timeframe.lower() + "&aggregationType=" + aggregation.lower(), "")
+                jsonContent = queryDynatraceAPI(True, API_ENDPOINT_TIMESERIES, "timeseriesId=" + timeseriesId + timeframedef.queryString + "&aggregationType=" + aggregation.lower(), "")
 
                 # We got our jsonContent - now we need to return the data for all Entities or the specific entities that got passed to us
                 jsonContentResult = jsonContent["result"]
@@ -752,7 +842,7 @@ def doDQL(doHelp, args, doPrint):
         print("dtcli dql <entitytype> <entity> <metrics> [dtUrl] [dtToken]")
         print("entitytype: app | appmethod | srv | pg | host")
         print("entity:     entityname")
-        print("metrics:    metricname[aggr%time],metricname[aggr%time]")
+        print("metrics:    metricname[aggr%time],metricname[aggr%timefrom:timeto]")
         print("Examples:")
         print("===================")
         print("dtcli dql host .*demo.* host.cpu.system[max%hour]")
@@ -765,6 +855,7 @@ def doDQL(doHelp, args, doPrint):
         print("dtcli dql appmethod .*Book.* appmethod.useractionduration[avg%hour]")
         print("-----")
         print("dtcli dql app www.easytravel.com app.useractions[count%hour] http://yourtenant.live.dynatrace.com ASESFEA12ASF")
+        print("dtcli dql srv tags/v123 service.responsetime[avg%hour]")
 
     else:
         entityTypes = ["appmethod","app","srv","pg","host"]
@@ -785,7 +876,8 @@ def doDQL(doHelp, args, doPrint):
             appMethodEntityMatch = re.compile(args[3])
             resultTimeseries = []
             for timeseries in allTimeseries:
-                if(timeseries.find(":") <= 0):
+                beginBracket = timeseries.find("[")
+                if(timeseries.find(":", None, beginBracket) <= 0):
                     timeseries = "com.dynatrace.builtin:" + timeseries
                 resultTimeseriesForEntity = doTimeseries(False, ["dtcli", "ts", "query", timeseries], False)
                 for timeseriesEntry in resultTimeseriesForEntity:
@@ -807,6 +899,7 @@ def doDQL(doHelp, args, doPrint):
                     # dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%hour] APP-ENTITY
                     allTimeseries = args[4].split(",")
                     for timeseries in allTimeseries:
+                        beginBracket = timeseries.find("[")
                         if(timeseries.find(":") <= 0):
                             timeseries = "com.dynatrace.builtin:" + timeseries
                         resultTimeseriesForEntity = doTimeseries(False, ["dtcli", "ts", "query", timeseries, entity], False)
@@ -881,10 +974,17 @@ def doEvent(doHelp, args, doPrint):
                     raise Exception("Error", "No Entities found that match query")
 
             # for timestamps we allow to specify either a full timestamp or Minutes.
-            if query["from"] is not None and int(query["from"]) < 1000000:
-                query["from"] = str(1000 * int(datetime.datetime.now().timestamp() - int(query["from"])*60))
-            if query["to"] is not None and int(query["to"]) < 1000000:
-                query["to"] = str(1000 * int(datetime.datetime.now().timestamp() - int(query["to"])*60))
+            fromTimeframeDef = TimeframeDef(query["from"])
+            toTimeframeDef = TimeframeDef(query["to"])
+            if fromTimeframeDef.isValid():
+                query["from"] = fromTimeframeDef.timeframeAsStr()
+            if toTimeframeDef.isValid():
+                query["to"] = toTimeframeDef.timeframeAsStr()
+                
+            # if query["from"] is not None and int(query["from"]) < global_timestampcheck:
+            #    query["from"] = str(1000 * int(datetime.datetime.now().timestamp() - int(query["from"])*60))
+            #if query["to"] is not None and int(query["to"]) < global_timestampcheck:
+            #    query["to"] = str(1000 * int(datetime.datetime.now().timestamp() - int(query["to"])*60))
 
             # now - lets build the actual query string
             queryString = ""
@@ -935,10 +1035,14 @@ def doEvent(doHelp, args, doPrint):
                     event["customProperties"][nameValue[0]] = urllib.parse.unquote(nameValue[1])
 
             # Make sure that Start / End are correctly set. If not specified we set it to NOW(). If end is not set we set it to start
-            if event["start"] is not None and int(event["start"]) < 1000000:
-                event["start"] = str(1000 * int(datetime.datetime.now().timestamp() - int(event["start"])*60))
-            if event["end"] is not None and int(event["end"]) < 1000000:
-                event["end"] = str(1000 * int(datetime.datetime.now().timestamp() - int(event["end"])*60))
+            startTimeframeDef = TimeframeDef(event["start"])
+            endTimeframeDef = TimeframeDef(event["end"])
+            if startTimeframeDef.isValid():
+                event["start"] = startTimeframeDef.timeframeAsStr()
+            if endTimeframeDef.isValid():
+                event["end"] = endTimeframeDef.timeframeAsStr()
+
+            # if start or end are not set we set it to "Now"
             if event["start"] is None:
                 event["start"] = str(1000 * int(datetime.datetime.now().timestamp()))
             if event["end"] is None:
