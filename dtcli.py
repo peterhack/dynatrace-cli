@@ -19,7 +19,8 @@ API_ENDPOINT_EVENTS = "/api/v1/events"
 API_ENDPOINT_PROBLEMS = "/api/v1/problem"
 
 # Configuration is read from config file if exists. If you want to go back to default simply delete the config file
-dtconfigfilename = os.path.dirname(os.path.abspath(__file__)) + "\\" + "dtconfig.json"
+osfileslashes = "/"
+dtconfigfilename = os.path.dirname(os.path.abspath(__file__)) + osfileslashes + "dtconfig.json"
 config = {
     "tenanthost"  : "smpljson",   # "abc12345.live.dynatrace.com" # this would be the configuration for a specific Dynatrace SaaS Tenant
     "apitoken"    : "smpltoken",  # YOUR API TOKEN, generated with Dynatrace
@@ -39,9 +40,9 @@ def getRequestUrl(apiEndpoint, queryString):
     return requestUrl
 
 def getCacheFilename(apiEndpoint, queryString):
-    fullCacheFilename = os.path.dirname(os.path.abspath(__file__)) + "\\" + config["tenanthost"].replace(".", "_") + "\\" + apiEndpoint.replace("/","_")
+    fullCacheFilename = os.path.dirname(os.path.abspath(__file__)) + osfileslashes + config["tenanthost"].replace(".", "_") + osfileslashes + apiEndpoint.replace("/","_")
     if(queryString is not None and len(queryString) > 0):
-        fullCacheFilename += "\\" + urllib.parse.unquote(queryString).replace(".", "_").replace(":", "_").replace("?", "_").replace("&", "_")
+        fullCacheFilename += osfileslashes + urllib.parse.unquote(queryString).replace(".", "_").replace(":", "_").replace("?", "_").replace("&", "_")
     fullCacheFilename += ".json"
 
     return fullCacheFilename
@@ -830,12 +831,12 @@ def doDQLReport(doHelp, args, doPrint):
 
 
     # read our overall html template
-    reportTemplateFile = open(os.path.dirname(os.path.abspath(__file__)) + "\\report\\report.html", "r")
+    reportTemplateFile = open(os.path.dirname(os.path.abspath(__file__)) + osfileslashes + "report" + osfileslashes + "report.html", "r")
     reportTemplateStr = reportTemplateFile.read()
     reportTemplateFile.close()
 
     # now lets generate the report itself - we read the chart template and the report template from our report directory
-    chartTemplateFile = open(os.path.dirname(os.path.abspath(__file__)) + "\\report\\r_template.html", "r")
+    chartTemplateFile = open(os.path.dirname(os.path.abspath(__file__)) + osfileslashes + "report" + osfileslashes + "r_template.html", "r")
     chartTemplateStr = chartTemplateFile.read()
     chartTemplateFile.close()
 
@@ -849,7 +850,7 @@ def doDQLReport(doHelp, args, doPrint):
     # now lets write the final report back to disk - also set the title
     dqlQueryString = " ".join(args[2:])
     reportTemplateStr = reportTemplateStr.replace("reportTitlePlaceholder", "Generated for DQL: " + dqlQueryString)
-    reportFileName = os.path.dirname(os.path.abspath(__file__)) + "\\dqlreport.html"
+    reportFileName = os.path.dirname(os.path.abspath(__file__)) + osfileslashes + "dqlreport.html"
 
     finalReportFile = open(reportFileName, "w")
     finalReportFile.write(reportTemplateStr)
