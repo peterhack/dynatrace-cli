@@ -129,7 +129,7 @@ def queryDynatraceAPI(isGet, apiEndpoint, queryString, postBody):
     fullCacheFilename = getCacheFilename(apiEndpoint, queryString)
     readFromCache = False
     if(os.path.isfile(fullCacheFilename)):
-        cacheupdate = config["cacheupdate"]
+        cacheupdate = int(config["cacheupdate"])
         if(cacheupdate == -1):
             readFromCache = True
         if(cacheupdate > 0):
@@ -182,7 +182,7 @@ class KeySearch:
     # - displayName=.*easyTravel                   -> match on value displayName=.*easyTravel
     # - tags/AWS:Name=.*host.*                     -> match parent list=tags, context=AWS,key=Name and value=.*host.*
     # - tags/Name=.*host.*                         -> match parent list=tags, key=Name and value=.*host.*
-    # - tags/context#AWS:key#Name=value#.*host.*   -> match parent list=tags, context=AWS,key=Name and value=.*host.*
+    # - tags/context#AWS:key#Name=.*host.*   -> match parent list=tags, context=AWS,key=Name and value=.*host.*
     def __init__(self, key):
         self.keylistname = None         # name of list in case we match on a list, e.g: tags
         self.contextvalue = None        # value of the context, e.g: AWS
@@ -212,7 +212,6 @@ class KeySearch:
             else:
                 if(self.keylistname is not None):
                     self.keyvalue = parts[0]
-                    self.keyname = "key"
                 else:
                     self.valuekeyname = parts[0]
 
@@ -238,7 +237,14 @@ def getAttributeFromFirstMatch(attributeName, objectlist):
     attributeNames = attributeName.split(",")
 
     if attributeName == "*":
-        return objectlist[len(objectlist)-1]
+        # if user wants the full object returned we find the first object in the list that is not empty or none
+        i = len(objectlist)-1
+        while i>=0:
+            if(objectlist[i] is not None):
+                return objectlist[i]
+            i = i-1;
+
+        return None
 
     for obj in objectlist:
         try:
@@ -317,7 +323,7 @@ def jsonFindValuesByKeyEx(jsonContent, key, matchValue, returnKey, parentJsonNod
             # 3: we have a matching key on a regular value
             elif jsonkey == key.valuekeyname:
                 # if we found the rigth key check if the value matches
-                if(matchValue is None or matchValue.match(jsonContent[jsonkey])):
+                if((jsonContent[jsonkey] is not None) and (matchValue is None or matchValue.match(jsonContent[jsonkey]))):
                     foundValueMatch = getAttributeFromFirstMatch(returnKey, [jsonContent, parentJsonContent])
 
             # 4: we have a matching context key in case user searches for context, e.g. in a tag
@@ -377,7 +383,8 @@ def handleException(e):
     sys.exit(1)
 
 # the following method is a pure TEST METHOD - allows me to test different combinations of parameters for my differnet use cases
-def mainX():
+runTestSuite = False;
+def testMain():
     pass
 
     try:
@@ -391,8 +398,8 @@ def mainX():
         tfd = TimeframeDef("starttest:endtest")
         tfd = TimeframeDef("starttest:0")
 
-
         readConfig()
+
 
         # doConfig(False, ["dtcli", "config", "apitoken", "asdf"])
         # saveConfig()
@@ -407,6 +414,7 @@ def mainX():
         #doEntity(False, ["dtcli", "ent","host","tags/AWS:Category?value=DEMOABILITY", "displayName"], True)
         #doEntity(False, ["dtcli", "ent","host","tags/AWS:Name=.*", "value"], True)
         #doEntity(False, ["dtcli", "ent","host","tags/AWS:Name=.*", "entityId"], True)
+        #doEntity(False, ["dtcli", "ent","host",".*", "*"], True)
         #doEntity(False, ["dtcli", "ent", "srv", "agentTechnologyType=JAVA", "displayName"], True)
         #doEntity(False, ["dtcli", "ent", "srv", "serviceTechnologyTypes=ASP.NET", "displayName"], True)
         #doEntity(False, ["dtcli", "ent", "srv", "serviceTechnologyTypes=ASP.NET", "entityId"], True)
@@ -416,6 +424,7 @@ def mainX():
         #doEntity(False, ["dtcli", "ent", "pg", "cloudFoundryAppNames=.*"], True)
         #doEntity(False, ["dtcli", "ent", "host", "ipAddresses=54\.86\..*"], True)
         #doEntity(False, ["dtcli", "ent", "pg", "softwareTechnologies/?type=TOMCAT"], True)
+        doEntity(False, ["dtcli", "ent", "pg", "softwareTechnologies/type#APACHE_HTTPD?version=2.*"], True)
 
         #doTimeseries(False, ["dtcli", "ts", "list"], True)
         #doTimeseries(False, ["dtcli", "ts", "list", ".*"], True)
@@ -424,6 +433,8 @@ def mainX():
         #doTimeseries(False, ["dtcli", "ts", "list", "com.dynatrace.builtin:appmethod.useractionsperminute", "aggregationTypes"], True)
         #doTimeseries(False, ["dtcli", "ts", "describe", "com.dynatrace.builtin:appmethod.useractionsperminute"], True)
         #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:service.responsetime"], True)
+        #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:host.cpu.system[max%hour]"], True)
+        #doTimeseries(False, ["dtcli", "ts", "query", "host.cpu.system[avg%hour]"], True)
         #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:appmethod.useractionsperminute[count%hour]"], True)
         #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:appmethod.useractionsperminute[count%hour]", "APPLICATION_METHOD-7B11AF03C396DCBC"], True)
         #doTimeseries(False, ["dtcli", "ts", "query", "com.dynatrace.builtin:app.useractionduration[avg%hour]", "APPLICATION-F5E7AEA0AB971DB1"], True)
@@ -590,13 +601,15 @@ def doTimeseries(doHelp, args, doPrint):
             print("dtcli ts describe com.dynatrace.builtin:appmethod.useractionsperminute")
             print("dtcli ts query jmx.tomcat.jdbc.pool:Active")
             print("dtcli ts query com.dynatrace.builtin:appmethod.useractionduration")
+            print("dtcli ts query com.dynatrace.builtin:servicemethod.responsetime")
             print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%hour]")
-            print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%hour] APP-ENTITY")
-            print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%2hour] APP-ENTITY")
-            print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%120:60] APP-ENTITY")
-            print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%custDeployEvent] APP-ENTITY")
+            print("dtcli ts queryent appmethod.useractionduration[avg%hour]")
+            print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%hour] APPMETHOD-ENTITY")
+            print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%2hour] APPMETHOD-ENTITY")
+            print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%120:60] APPMETHOD-ENTITY")
+            print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%custDeployEvent] APPMETHOD-ENTITY,APPMETHOD-ENTITY2")
     else:
-        actionTypes = ["list","query","push","describe"]
+        actionTypes = ["list","query","push","describe","queryent"]
         action = None
         if (len(args) <= 2) or not operator.contains(actionTypes, args[2]):
             # Didnt provide the correct parameters - show help!
@@ -621,14 +634,14 @@ def doTimeseries(doHelp, args, doPrint):
 
             elements = jsonFindValuesByKey(jsonContent, matchKeyName, matchValue, returnKey)
             print(elements)
-        elif action == 1: # query
+        elif action == 1 or action == 4: # query or queryent
             # lets check our special token params
             doCheckTempConfigParams(args, 5)
         
             # build the query string for the timeseries id
             entities = None
             if(len(args) > 4):
-                entities = args[4]
+                entities = args[4].split(",")
             if(len(args) > 3):
                 timeseriesId = args[3]
                 aggregation = "avg"
@@ -647,7 +660,6 @@ def doTimeseries(doHelp, args, doPrint):
                     if(len(configParts[2]) > 0):
                         timeframe = configParts[2]
 
-
                 # check what the timeframe parameter is
                 timeframedef = TimeframeDef(timeframe)
                 if timeframedef.isValid():
@@ -661,25 +673,33 @@ def doTimeseries(doHelp, args, doPrint):
                     timeframedef.queryString = ""
 
                 # now lets query the timeframe API
+                if(timeseriesId.find(":") <= 0):
+                    timeseriesId = "com.dynatrace.builtin:" + timeseriesId
                 jsonContent = queryDynatraceAPI(True, API_ENDPOINT_TIMESERIES, "timeseriesId=" + timeseriesId + timeframedef.queryString + "&aggregationType=" + aggregation.lower(), "")
 
                 # We got our jsonContent - now we need to return the data for all Entities or the specific entities that got passed to us
                 jsonContentResult = jsonContent["result"]
                 if(jsonContentResult):
                     if(jsonContentResult["timeseriesId"] == timeseriesId):
-                        measureResult = filterDataPointsForEntities(jsonContentResult["dataPoints"], entities)
+                        if action == 1: # query
+                            measureResult = filterDataPointsForEntities(jsonContentResult["dataPoints"], entities)
 
-                        # now we iterate through all Entitys and also get the name
-                        for entity in measureResult:
-                            measureResult[entity]["entityDisplayName"] = jsonContentResult["entities"][entity]
-                            measureResult[entity]["unit"] = jsonContentResult["unit"]
-                            measureResult[entity]["aggregationType"] = jsonContentResult["aggregationType"]
-                            measureResult[entity]["resolutionInMillisUTC"] = jsonContentResult["resolutionInMillisUTC"]
-                            measureResult[entity]["timeseriesId"] = jsonContentResult["timeseriesId"]
+                            # now we iterate through all Entitys and also get the name
+                            for entity in measureResult:
+                                measureResult[entity]["entityDisplayName"] = jsonContentResult["entities"][entity]
+                                measureResult[entity]["unit"] = jsonContentResult["unit"]
+                                measureResult[entity]["aggregationType"] = jsonContentResult["aggregationType"]
+                                measureResult[entity]["resolutionInMillisUTC"] = jsonContentResult["resolutionInMillisUTC"]
+                                measureResult[entity]["timeseriesId"] = jsonContentResult["timeseriesId"]
 
-                        if doPrint:
-                            print(measureResult)
-                        return measureResult
+                            if doPrint:
+                                print(measureResult)
+                            return measureResult
+
+                        if action == 4: # queryent - return the list of entities
+                            if doPrint:
+                                print(jsonContentResult["entities"])
+                            return jsonContentResult["entities"]
             else:
                 doTimeseries(True, args, doPrint)
         
@@ -691,6 +711,9 @@ def doTimeseries(doHelp, args, doPrint):
         
             if(len(args) > 3):
                 timeseriesId = args[3]
+                if(timeseriesId.find(":") <= 0):
+                    timeseriesId = "com.dynatrace.builtin:" + timeseriesId
+
                 jsonContent = queryDynatraceAPI(True, API_ENDPOINT_TIMESERIES, "", "")
                 for timeseries in jsonContent:
                     if(timeseries["timeseriesId"] == timeseriesId):
@@ -734,7 +757,7 @@ def doConfig(doHelp, args):
             elif configName == "tenanthost":
                 config["tenanthost"] = configValue
             elif configName == "cacheupdate":
-                config["cacheupdate"] = configValue
+                config["cacheupdate"] = int(configValue)
             else:
                 print("Configuration element '" + configName + "' not valid")
                 doConfig(True, args)
@@ -853,12 +876,13 @@ def doDQL(doHelp, args, doPrint):
         print("dtcli dql app www.easytravel.com app.useractions[count%hour]")
         print("dtcli dql app www.easytravel.com app.useractions[count%hour],app.useractionduration[avg%hour]")
         print("dtcli dql appmethod .*Book.* appmethod.useractionduration[avg%hour]")
+        print("dtcli dql servicemethod checkCreditCard servicemethod.responsetime[avg%hour],servicemethod.requestspermin[count%hour]")
         print("-----")
         print("dtcli dql app www.easytravel.com app.useractions[count%hour] http://yourtenant.live.dynatrace.com ASESFEA12ASF")
         print("dtcli dql srv tags/v123 service.responsetime[avg%hour]")
 
     else:
-        entityTypes = ["appmethod","app","srv","pg","host"]
+        entityTypes = ["appmethod","servicemethod","app","srv","pg","host"]
         entityType = None
         if (len(args) <= 4) or not operator.contains(entityTypes, args[2]):
             # Didnt provide the correct parameters - show help!
@@ -871,7 +895,7 @@ def doDQL(doHelp, args, doPrint):
         doCheckTempConfigParams(args, 5)
 
         # now lets get the data!
-        if entityType == 0: # appmethod -> special handling as there is no queryable entitytype of appmethod
+        if entityType == 0 or entityType == 1: # appmethod/servicemethod -> special handling as there is no queryable entitytype of appmethod
             allTimeseries = args[4].split(",")
             appMethodEntityMatch = re.compile(args[3])
             resultTimeseries = []
@@ -1100,4 +1124,8 @@ def doTag(doHelp, args, doPrint):
             return tagableEntities;
     return None    
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    if runTestSuite: 
+        testMain()
+    else: 
+        main()
