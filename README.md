@@ -33,6 +33,12 @@ The easiest to get started is simply checking out this Git repo and install Pyth
 ['MOBILE_APPLICATION-752C288D59734C79']
 ```
 
+*Using it on Linux*: I heard that instead of py or python you may have to use pyhton3 to execute the script successfully. that would then be
+```
+> python3 dtcli.py ent app .*easyTravel.*
+['MOBILE_APPLICATION-752C288D59734C79']
+```
+
 Alright - now we are ready. Here are more examples and a brief overview of the CLIs capabilities
 
 ## Examples
