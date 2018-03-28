@@ -23,7 +23,8 @@ Generated report for host tags/AWS:Name=et-demo.* host.cpu.system[max%hour],host
 * (TBD) Push Custom Metrics
 
 ## Requirements:
-* Python Runtime: [Download](https://www.python.org/downloads/)
+* Python 3 Runtime: [Download](https://www.python.org/downloads/)
+* Install Requests Package: pip install requests
 * Dynatrace Tenant: [Get your Saas Trial Tenant](http://bit.ly/dtsaastrial)
 
 # Trying it yourself
