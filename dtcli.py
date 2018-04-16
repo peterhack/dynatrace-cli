@@ -35,7 +35,10 @@ def getAuthenticationHeader():
     return {"Authorization" : "Api-Token " + config["apitoken"]}
 
 def getRequestUrl(apiEndpoint, queryString):
-    requestUrl = "https://" + config["tenanthost"] + apiEndpoint
+    requestUrl = config["tenanthost"] + apiEndpoint
+    if(not requestUrl.startswith("https://")) : 
+        requestUrl = "https://" + requestUrl;
+
     if(queryString is not None and len(queryString) > 0):
         requestUrl += "?" + queryString
     return requestUrl
@@ -511,6 +514,8 @@ def main():
             doDQLReport(doHelp, sys.argv, True)
         elif command == "tag":
             doTag(doHelp, sys.argv, True)
+        elif command == "monspec":
+            doMonspec(doHelp, sys.argv, True)
         else :
             doUsage(sys.argv)
     except Exception as e:
@@ -1081,6 +1086,51 @@ def doEvent(doHelp, args, doPrint):
             response = queryDynatraceAPI(False, API_ENDPOINT_EVENTS, "", event)
             if doPrint:
                 print(response)
+
+def doMonspec(doHelp, args, doPrint):
+    "Allows you to extract validate monspec for source or comparision or perform the actual comparison"
+    if doHelp:
+        if(doPrint):
+            print("dtcli monspec tag type <entityId|query> <list of tags>")
+            print("type: app | srv | pg | host")
+            print("Examples:")
+            print("===================")
+            print("dtcli tag app .*easyTravel.* easyTravelAppTag")
+            print("dtcli tag srv JourneyService journeyServiceTag,serviceTag")
+            print("dtcli tag app entityId=APPLICATION-F5E7AEA0AB971DB1 easyTravelAppTag")
+            print("--------------------")
+            print("dtcli tag app .*easyTravel.* easyTravelAppTag tenant.live.dynatrace.com APITOKEN")
+    else:
+        entityTypes = ["app","srv","pg","host"]
+        entityEndpoints = [API_ENDPOINT_APPLICATIONS, API_ENDPOINT_SERVICES, API_ENDPOINT_PROCESS_GROUPS, API_ENDPOINT_HOSTS]
+        if (len(args) <= 4) or not operator.contains(entityTypes, args[2]):
+            # Didnt provide the correct parameters - show help!
+            doTag(True, args, doPrint)
+        else:
+            # lets check our special token param
+            doCheckTempConfigParams(args, 5)
+
+            # Now we either parse the list of entityIds from the arguments or we query for them by using doEntity
+            apiEndpoint = operator.getitem(entityEndpoints, operator.indexOf(entityTypes, args[2]))
+            tagableEntities = []
+            if args[3].startswith("entityId="):
+                entityString = args[3][9:]
+                tagableEntities = entityString.split(",")
+            else:
+                tagableEntities = doEntity(False, ["dtcli", "ent", args[2], args[3]], False)
+
+            # do we have any entities to tag?
+            if len(tagableEntities) == 0:
+                raise Exception("Error", "No entities specified or query doesnt match any entites")
+
+            # lets tag em
+            tags = { "tags" : args[4].split(",")}
+            for entity in tagableEntities:
+                queryDynatraceAPI(False, apiEndpoint + "/" + entity, "", tags)
+
+            return tagableEntities;
+    return None
+
 
 def doTag(doHelp, args, doPrint):
     "Allows you to put tags on one or more entites"
