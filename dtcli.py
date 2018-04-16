@@ -41,10 +41,11 @@ def getRequestUrl(apiEndpoint, queryString):
 
     if(queryString is not None and len(queryString) > 0):
         requestUrl += "?" + queryString
+
     return requestUrl
 
 def getCacheFilename(apiEndpoint, queryString):
-    fullCacheFilename = os.path.dirname(os.path.abspath(__file__)) + osfileslashes + config["tenanthost"].replace(".", "_") + osfileslashes + apiEndpoint.replace("/","_")
+    fullCacheFilename = os.path.dirname(os.path.abspath(__file__)) + osfileslashes + config["tenanthost"].replace("https://","").replace(".", "_") + osfileslashes + apiEndpoint.replace("/","_")
     if(queryString is not None and len(queryString) > 0):
         fullCacheFilename += osfileslashes + urllib.parse.unquote(queryString).replace(".", "_").replace(":", "_").replace("?", "_").replace("&", "_")
     fullCacheFilename += ".json"
