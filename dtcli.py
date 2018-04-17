@@ -854,7 +854,7 @@ def doDQLReport(doHelp, args, doPrint):
                 dt = datetime.datetime.fromtimestamp(dataPoint[0]/1000)
                 dataPoint[0] = str(dt)
                 if dataPoint[1] is None:
-                    dataPoint[1] = "null"
+                    dataPoint[1] = "NULL"
                 seriesEntryForReport["data"].append(dataPoint)
 
             seriesListForReport.append(seriesEntryForReport)
@@ -873,7 +873,7 @@ def doDQLReport(doHelp, args, doPrint):
 
     for timeseriesReport in allSeriesForReport: 
         print("timeseries: " + timeseriesReport)
-        timeseriesReportStr = chartTemplateStr.replace("seriesPlaceholder", str(allSeriesForReport[timeseriesReport]))
+        timeseriesReportStr = chartTemplateStr.replace("seriesPlaceholder", str(allSeriesForReport[timeseriesReport]).replace("'NULL'", "null"))
         timeseriesReportStr = timeseriesReportStr.replace("yaxisPlaceholder", allUnitsForReport[timeseriesName])
         timeseriesReportStr = timeseriesReportStr.replace("titlePlaceholder", timeseriesReport)
         timeseriesReportStr = timeseriesReportStr.replace("uniqueChartnamePlaceholder", timeseriesReport)
