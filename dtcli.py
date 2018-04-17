@@ -74,11 +74,11 @@ class TimeframeDef:
 
         self.type = []
         self.timestamp = []
-        allowedConsts = ["hour", "2hours", "6hours", "day", "week", "month"]
+        self.allowedConsts = ["hour", "2hours", "6hours", "day", "week", "month"]
 
         self.timeframestr = timeframe.split(":")
         for timeframe in self.timeframestr:
-            if operator.contains(allowedConsts, timeframe):
+            if operator.contains(self.allowedConsts, timeframe):
                 self.type.append("relative")
             elif timeframe.isdigit():
                 # if it is an int check whether it is a number we convert relative to now or whether it is a full timestamp
@@ -98,8 +98,19 @@ class TimeframeDef:
     def isTimerange(self):
         return self.isValid() and len(self.timeframestr) > 1
 
-    def timeframeAsStr(self, frame=0):
+    def getNowAsStringForWebUI(self):
+        return str(1000*datetime.datetime.now().timestamp())
+
+    def timeframeAsStrForWebUI(self, frame=0):
         if self.isRelative(frame):
+            webUIConsts = ["l_1_HOURS", "l_2_HOURS", "l_6_HOURS", "l_24_HOURS", "l_7_DAYS", "l_30_DAYS"]
+            ix = operator.indexOf(self.allowedConsts, self.timeframestr[frame])
+            return webUIConsts[ix]
+        else:
+            return str(self.timestamp[frame])
+
+    def timeframeAsStr(self, frame=0):
+        if self.isRelative():
             return self.timeframestr[frame]
 
         return str(self.timestamp[frame])
@@ -517,6 +528,8 @@ def main():
             doTag(doHelp, sys.argv, True)
         elif command == "monspec":
             doMonspec(doHelp, sys.argv, True)
+        elif command == "link":
+            doLink(doHelp, sys.argv, True)
         else :
             doUsage(sys.argv)
     except Exception as e:
@@ -612,6 +625,7 @@ def doTimeseries(doHelp, args, doPrint):
             print("dtcli ts query com.dynatrace.builtin:servicemethod.responsetime")
             print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%hour]")
             print("dtcli ts queryent appmethod.useractionduration[avg%hour]")
+            print("dtcli ts queryent appmethod.useractionduration[p90%hour]")
             print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%hour] APPMETHOD-ENTITY")
             print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%2hour] APPMETHOD-ENTITY")
             print("dtcli ts query com.dynatrace.builtin:appmethod.useractionsperminute[count%120:60] APPMETHOD-ENTITY")
@@ -654,8 +668,10 @@ def doTimeseries(doHelp, args, doPrint):
                 timeseriesId = args[3]
                 aggregation = "avg"
                 timeframe = "hour"
+                percentile = None
 
                 # "Allowed strings are: justtimeseries, timeseries[aggregagtion],, timeseries[aggregation%timeframe], timeseries[aggregation%timeframe1:timeframe2]"
+                # For aggregation we allow avg,min,max, ... as well as pXX where this means Percentile XX
                 # now we check for name=value pair or just value
                 beginBracket = timeseriesId.find("[")
                 endBracket = timeseriesId.find("]")
@@ -665,6 +681,9 @@ def doTimeseries(doHelp, args, doPrint):
                     configParts = configuration.partition("%")
                     if(len(configParts[0]) > 0):
                         aggregation = configParts[0]
+                        if (aggregation.startswith("p")) :
+                            percentile = aggregation[1:]
+                            aggregation = "percentile";
                     if(len(configParts[2]) > 0):
                         timeframe = configParts[2]
 
@@ -683,7 +702,10 @@ def doTimeseries(doHelp, args, doPrint):
                 # now lets query the timeframe API
                 if(timeseriesId.find(":") <= 0):
                     timeseriesId = "com.dynatrace.builtin:" + timeseriesId
-                jsonContent = queryDynatraceAPI(True, API_ENDPOINT_TIMESERIES, "timeseriesId=" + timeseriesId + timeframedef.queryString + "&aggregationType=" + aggregation.lower(), "")
+                aggregationQueryString = "&aggregationType=" + aggregation.lower();
+                if (percentile is not None) :
+                    aggregationQueryString += "&percentile=" + percentile;
+                jsonContent = queryDynatraceAPI(True, API_ENDPOINT_TIMESERIES, "timeseriesId=" + timeseriesId + timeframedef.queryString + aggregationQueryString, "")
 
                 # We got our jsonContent - now we need to return the data for all Entities or the specific entities that got passed to us
                 jsonContentResult = jsonContent["result"]
@@ -804,9 +826,12 @@ def doDQLReport(doHelp, args, doPrint):
     # ]
 
     allSeriesForReport = {}
+    allUnitsForReport = {}
 
     for result in resultTimeseries:
+        print("result")
         for entityId in result: # this should only return one element anyway - which is our entityId
+            print("  " + entityId);
             entityObject = result[entityId]
             timeseriesId = entityObject["timeseriesId"];
             unit = entityObject["unit"]
@@ -834,8 +859,7 @@ def doDQLReport(doHelp, args, doPrint):
 
             seriesListForReport.append(seriesEntryForReport)
             allSeriesForReport[timeseriesName] = seriesListForReport
-            allSeriesForReport[timeseriesName + "_unit"] = unit
-
+            allUnitsForReport[timeseriesName] = unit;
 
     # read our overall html template
     reportTemplateFile = open(os.path.dirname(os.path.abspath(__file__)) + osfileslashes + "report" + osfileslashes + "report.html", "r")
@@ -848,8 +872,9 @@ def doDQLReport(doHelp, args, doPrint):
     chartTemplateFile.close()
 
     for timeseriesReport in allSeriesForReport: 
+        print("timeseries: " + timeseriesReport)
         timeseriesReportStr = chartTemplateStr.replace("seriesPlaceholder", str(allSeriesForReport[timeseriesReport]))
-        timeseriesReportStr = timeseriesReportStr.replace("yaxisPlaceholder", allSeriesForReport[timeseriesName + "_unit"])
+        timeseriesReportStr = timeseriesReportStr.replace("yaxisPlaceholder", allUnitsForReport[timeseriesName])
         timeseriesReportStr = timeseriesReportStr.replace("titlePlaceholder", timeseriesReport)
         timeseriesReportStr = timeseriesReportStr.replace("uniqueChartnamePlaceholder", timeseriesReport)
         reportTemplateStr = reportTemplateStr.replace("<div id=\"placeholder\"/>", timeseriesReportStr)
@@ -881,6 +906,7 @@ def doDQL(doHelp, args, doPrint):
         print("dtcli dql host tags/AWS:Name=et-demo.* com.dynatrace.builtin:host.cpu.system[max%hour]")
         print("dtcli dql pg cloudFoundryAppNames=.* com.dynatrace.builtin:pgi.cpu.usage[avg%hour]")
         print("dtcli dql srv agentTechnologyType=JAVA service.responsetime[max%hour]")
+        print("dtcli dql srv agentTechnologyType=JAVA service.responsetime[p90%hour]")
         print("dtcli dql app www.easytravel.com app.useractions[count%hour]")
         print("dtcli dql app www.easytravel.com app.useractions[count%hour],app.useractionduration[avg%hour]")
         print("dtcli dql appmethod .*Book.* appmethod.useractionduration[avg%hour]")
@@ -888,6 +914,7 @@ def doDQL(doHelp, args, doPrint):
         print("-----")
         print("dtcli dql app www.easytravel.com app.useractions[count%hour] http://yourtenant.live.dynatrace.com ASESFEA12ASF")
         print("dtcli dql srv tags/v123 service.responsetime[avg%hour]")
+        print("dtcli dql srv tags/v123 service.responsetime[p50%hour]")
 
     else:
         entityTypes = ["appmethod","servicemethod","app","srv","pg","host"]
@@ -1089,7 +1116,7 @@ def doEvent(doHelp, args, doPrint):
                 print(response)
 
 def doMonspec(doHelp, args, doPrint):
-    "Allows you to extract validate monspec for source or comparision or perform the actual comparison"
+    "TODO: Allows you to extract validate monspec for source or comparision or perform the actual comparison"
     if doHelp:
         if(doPrint):
             print("dtcli monspec tag type <entityId|query> <list of tags>")
@@ -1130,6 +1157,99 @@ def doMonspec(doHelp, args, doPrint):
                 queryDynatraceAPI(False, apiEndpoint + "/" + entity, "", tags)
 
             return tagableEntities;
+    return None
+
+def doLink(doHelp, args, doPrint):
+    "TODO: Allows you to get a direct link to a specific dynatrace dashboard"
+    if doHelp:
+        if(doPrint):
+            print("dtcli link type query viewid timeframe")
+            print("type: app | srv | pg | host")
+            print("query: ")
+            print("viewid: overview details")
+            print("timeframe: hour,2hours,6hours ... Xminutes:yMinutes ... timestampX:timestampY")
+            print("Examples:")
+            print("===================")
+            print("dtcli link srv JourneyService overview 2hours")
+            print("dtcli link srv tags/DeploymentGroup=Staging serviceflow 60:0")
+            print("dtcli link app entityId=APPLICATION-F5E7AEA0AB971DB1 overview 2hours")
+            print("--------------------")
+            print("dtcli link srv JourneyService overview 2hours tenant.live.dynatrace.com APITOKEN")
+    else:
+        entityTypes = ["app","srv","pg","host"]
+        if (len(args) <= 5) or not operator.contains(entityTypes, args[2]):
+            # Didnt provide the correct parameters - show help!
+            doLink(True, args, doPrint)
+        else:
+            # lets check our special token param
+            doCheckTempConfigParams(args, 6)
+
+            # Now we either parse the list of entityIds from the arguments or we query for them by using doEntity
+            tagableEntities = []
+            if args[3].startswith("entityId="):
+                entityString = args[3][9:]
+                tagableEntities = entityString.split(",")
+            else:
+                tagableEntities = doEntity(False, ["dtcli", "ent", args[2], args[3]], False)
+
+            # do we have any entities to tag?
+            if len(tagableEntities) == 0:
+                raise Exception("Error", "No entities specified or query doesnt match any entites")
+
+            # lets create the timeframe string
+            timeframe = TimeframeDef(args[5])
+            if( not timeframe.isValid() ):
+                raise Exception("Error", "Timeframe definition is not valid: " + args[6])
+            if timeframe.isRelative():
+                timeframe.queryString = ";gtf=" + timeframe.timeframeAsStrForWebUI()
+            if timeframe.isAbsolute():
+                timeframe.queryString = ";gtf=c_" + timeframe.timeframeAsStrForWebUI(0) + "_" + timeframe.getNowAsStringForWebUI()
+            if timeframe.isTimerange():
+                timeframe.queryString = ";gtf=c_" + timeframe.timeframeAsStrForWebUI(0) + "_" + timeframe.timeframeAsStrForWebUI(1)
+
+            # lets create the links for each entitiy and print em out
+            for entity in tagableEntities:
+                if (entity.startswith("SERVICE-")):
+                    if(args[4] == "details"):                        
+                        entityview = "#smgd"
+                        overview = None
+                        idparam = "sci"
+                    else:
+                        entityview = "#services"
+                        overview = "serviceOverview"
+                        idparam = "id"
+                        
+                elif (entity.startswith("HOST-")) :
+                    entityview = "#hosts"
+                    overview = "hostdetails"
+                    idparam = "id"
+                elif (entity.startswith("APPLICATION-")) :
+                    entityview = "#uemapplications"
+                    overview = "uemappmetrics"
+                    idparam = "uemapplicationId"
+                elif (entity.startswith("PROCESS_GROUP-INSTANCE-")) :
+                    entityview = "#processdetails"
+                    overview = None
+                    idparam = "id"
+                else:
+                    entityview = "#dashboards"
+                    overview = None
+                    idparam = "id"
+
+                # lets construct the regular link
+                fullUrl = "/" + entityview
+                if(overview is not None):
+                    fullUrl += "/" + overview
+                if(idparam is not None):
+                    fullUrl += ";" +idparam + "=" + entity
+
+                # now lets add the timeframe
+                fullUrl += timeframe.queryString;
+
+                fullUrl = getRequestUrl(fullUrl, None)
+
+                print(fullUrl)
+
     return None
 
 
