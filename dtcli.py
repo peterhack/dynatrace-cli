@@ -802,6 +802,8 @@ def doCheckTempConfigParams(args, argIndex):
         config["tenanthost"] = args[argIndex]     
     if(len(args) > argIndex+1):
         config["apitoken"] = args[argIndex+1]     
+    if(len(args) > argIndex+2):
+        config["cacheupdate"] = int(args[argIndex+2])
 
 def doDQLReport(doHelp, args, doPrint):
     "Simliar to DQL but DQLR will generate an HTML Report for eachi timeseries"
