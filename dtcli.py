@@ -4,20 +4,53 @@ import io
 import re
 import os
 import json
+import time
 import datetime
 import operator
 import urllib
 import requests
 
-# Constants
+# =========================================================
+# CONSTANTS
+# =========================================================
+
+# REST API Endpoints
 API_ENDPOINT_APPLICATIONS = "/api/v1/entity/applications"
 API_ENDPOINT_SERVICES = "/api/v1/entity/services"
 API_ENDPOINT_PROCESS_GROUPS = "/api/v1/entity/infrastructure/process-groups"
 API_ENDPOINT_HOSTS = "/api/v1/entity/infrastructure/hosts"
 API_ENDPOINT_PROCESSES = "/api/v1/entity/infrastructure/processes"
+API_ENDPOINT_CUSTOM = "/api/v1/entity/infrastructure/custom"
 API_ENDPOINT_TIMESERIES = "/api/v1/timeseries"
+API_ENDPOINT_THRESHOLDS = "/api/v1/thresholds"
 API_ENDPOINT_EVENTS = "/api/v1/events"
 API_ENDPOINT_PROBLEMS = "/api/v1/problem"
+
+# HTTP Methods when calling the Dynatrace API via queryDynatraceAPIEx
+HTTP_GET = "GET"
+HTTP_POST = "POST"
+HTTP_PUT = "PUT"
+HTTP_DELETE = "DELETE"
+
+# Monitoring as Code (monspec) CONSTANTS
+MONSPEC_PERFSIGNATURE = "perfsignature"
+MONSPEC_PERFSIGNATURE_TIMESERIES = "timeseries"
+MONSPEC_PERFSIGNATURE_AGGREGATE = "aggregate"
+MONSPEC_PERFSIGNATURE_SMARTSCAPE = "smartscape"
+MONSPEC_PERFSIGNATURE_METRICID = "metricId"
+MONSPEC_PERFSIGNATURE_METRICDEF = "metricDef"
+MONSPEC_PERFSIGNATURE_SOURCE = "source"
+MONSPEC_PERFSIGNATURE_COMPARE = "compare"
+MONSPEC_PERFSIGNATURE_THRESHOLD = "threshold"
+MONSPEC_PERFSIGNATURE_RESULT = "result"
+MONSPEC_PERFSIGNATURE_RESULT_COMPARE = "result_compare"
+MONSPEC_DISPLAYNAME = "displayName"
+MONSPEC_METRICTYPE_SERVICE = "Monspec Service Metric"
+MONSPEC_METRICTYPE_SMARTSCAPE = "Monspec Smartscape Metric"
+
+# =========================================================
+# Global Configuration, logging, execute REST requests ...
+# =========================================================
 
 # Configuration is read from config file if exists. If you want to go back to default simply delete the config file
 osfileslashes = "/"
@@ -31,9 +64,11 @@ config = {
 global_doPrint = False
 global_timestampcheck = datetime.datetime(2000, 1, 1, ).timestamp()   # if timestamp int values are larger than this we assume it is a timestamp
 
+# Returns the Authentication Header for the Dynatrace REST API
 def getAuthenticationHeader():
     return {"Authorization" : "Api-Token " + config["apitoken"]}
 
+# Builds the Request URL for the Dynatrace REST API
 def getRequestUrl(apiEndpoint, queryString):
     requestUrl = config["tenanthost"] + apiEndpoint
     if(not requestUrl.startswith("https://")) : 
@@ -44,6 +79,7 @@ def getRequestUrl(apiEndpoint, queryString):
 
     return requestUrl
 
+# Constructs the cached filename based on API Endpoint and Query String
 def getCacheFilename(apiEndpoint, queryString):
     fullCacheFilename = os.path.dirname(os.path.abspath(__file__)) + osfileslashes + config["tenanthost"].replace("https://","").replace(".", "_") + osfileslashes + apiEndpoint.replace("/","_")
     if(queryString is not None and len(queryString) > 0):
@@ -51,6 +87,11 @@ def getCacheFilename(apiEndpoint, queryString):
     fullCacheFilename += ".json"
 
     return fullCacheFilename
+
+# TODO: implement better encoding - right now its about replacing spaces with %20
+def encodeString(strValue):
+    encodedStrValue = strValue.replace(" ", "%20")
+    return encodedStrValue
 
 class NameValue:
     def __init__(self, defaultName, defaultValue):
@@ -62,6 +103,7 @@ class NameValue:
         else:
             self.value = defaultValue
 
+# Timeframe definition
 class TimeframeDef:
     def __init__(self, timeframe):
         "parses the string. allowed values are hour,2hours,6hours,day,week,month - also allowed are custom event names, 0=Now, X=Minutes prior to Now or a full UTC Timestamp"
@@ -124,8 +166,19 @@ class TimeframeDef:
     def isAbsolute(self, frame=0):
         return self.type[frame] == "absolute"
 
+# =========================================================
+# Helper functions
+# =========================================================
 
-# helper functions
+# returns TRUE if value is numeric
+def isNumeric(value):
+    try:
+        numValue = int(value)
+    except:
+        return False
+    
+    return True
+
 def parseNameValue(nameValue, defaultName, defaultValue):
     "Allowed strings are: justvalue, name=value, [value1,value2], name=[value1,value2]"
 
@@ -142,6 +195,14 @@ def parseNameValue(nameValue, defaultName, defaultValue):
     return NameValue(partitions[0], partitions[2])
 
 def queryDynatraceAPI(isGet, apiEndpoint, queryString, postBody):
+    "Executes a Dynatrace REST API Query - either GET or POST. Internally calls queryDynatraceAPIEx"
+    if isGet : httpMethod = HTTP_GET
+    else: httpMethod = HTTP_POST
+    return queryDynatraceAPIEx(httpMethod, apiEndpoint, queryString, postBody)
+
+def queryDynatraceAPIEx(httpMethod, apiEndpoint, queryString, postBody):
+    "Executes a Dynatrace REST API Query. First validates if data is already available in Cache."
+
     # we first validate if we have the file in cache. NOTE: we only store HTTP GET data in the Cache. NO POST!
     fullCacheFilename = getCacheFilename(apiEndpoint, queryString)
     readFromCache = False
@@ -156,22 +217,26 @@ def queryDynatraceAPI(isGet, apiEndpoint, queryString, postBody):
                 readFromCache = True
 
     jsonContent = None
-    if isGet and readFromCache:
+    if (httpMethod == HTTP_GET) and readFromCache:
         with open(fullCacheFilename) as json_data:
             jsonContent = json.load(json_data)
     else:
         myResponse = None
-        if isGet:
+        if httpMethod == HTTP_GET:
             myResponse = requests.get(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=True)
-        else:
+        elif httpMethod == HTTP_POST:
             myResponse = requests.post(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=True, json=postBody)
+        elif httpMethod == HTTP_PUT:
+            myResponse = requests.put(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=True, json=postBody)
+        elif httpMethod == HTTP_DELETE:
+            myResponse = requests.delete(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=True, json=postBody)
 
         # For successful API call, response code will be 200 (OK)
         if(myResponse.ok):
             if(len(myResponse.text) > 0):
                 jsonContent = json.loads(myResponse.text)
 
-            if isGet and jsonContent is not None:
+            if (httpMethod == HTTP_GET) and jsonContent is not None:
                 # lets ensure the directory is there
                 directory = os.path.dirname(fullCacheFilename)
                 if not os.path.exists(directory):
@@ -378,7 +443,7 @@ def matchEntityName(entityName, listOfEntities):
     return False
 
 def filterDataPointsForEntities(jsonDataPoints, entities):
-    # Will iterate through the Data Points and return those metrics that match the entities. If entities == None we return all matching entities
+    "Will iterate through the Data Points and return those metrics that match the entities. If entities == None we return all matching entities"
     result = {}
     for entityDataPoint in jsonDataPoints:
         if matchEntityName(entityDataPoint, entities):
@@ -387,6 +452,7 @@ def filterDataPointsForEntities(jsonDataPoints, entities):
     return result
 
 def handleException(e):
+    "Handles Exceptions. Prints them to console and exits the program"
     errorObject = {}
     if e.args:
         if len(e.args) == 2:
@@ -399,7 +465,353 @@ def handleException(e):
     print(errorObject)
     sys.exit(1)
 
-# the following method is a pure TEST METHOD - allows me to test different combinations of parameters for my differnet use cases
+def getAttributeOrNone(baseobject, attributename):
+    "Tries to get the attribute with that name from that object or returns None if not existing"
+    attributeValue = None
+    try :
+        attributeValue = baseobject[attributename]
+    except:
+        attributeValue = None
+    return attributeValue
+
+def parsePipelineInfo(pipelineinfofile):
+    "will parse the pipelineinfo file"
+    pipelineinfo = None
+
+    with open(pipelineinfofile) as json_data:
+        pipelineinfo = json.load(json_data)
+
+    return pipelineinfo
+
+def parseMonspec(monspecfile, fillMetaData):
+    "Will parse the passed monspecfile and extends it with metric information metadata (fillMetaData==true) from our timeseries description"
+    monspec = None
+
+    # 1: lets open monspec
+    with open(monspecfile) as json_data:
+        monspec = json.load(json_data)
+
+        # 2: lets iterate through all the high-level config names (we assume there is only one anyway, e.g: SampleJSonService)
+        for monspecConfigName in monspec:
+            monspecConfig = monspec[monspecConfigName];
+
+            if (fillMetaData) :
+                # 3: now we iteratre through the perfsignature entries and fill each entry up with more details about the metric
+                perfsignatures = monspecConfig[MONSPEC_PERFSIGNATURE]
+                if (perfsignatures is not None):
+                    for perfsignature in perfsignatures:
+                        
+                        # IF this entry defines a timeseries then get the additional information by querying timeseries meta data
+                        timeseries = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_TIMESERIES)
+                        aggregate = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_AGGREGATE)
+                        if(timeseries is not None) :
+                            timeseriesMetaData = doTimeseries(False, ["dtcli","ts","describe",timeseries], False)
+                            perfsignature[MONSPEC_PERFSIGNATURE_METRICID] = "custom:monspec." + timeseries.replace(":", ".") + "." + aggregate
+                            perfsignature[MONSPEC_PERFSIGNATURE_METRICDEF] = { 
+                                MONSPEC_DISPLAYNAME : timeseriesMetaData["detailedSource"] + "-" + timeseriesMetaData[MONSPEC_DISPLAYNAME] + "(" + aggregate + ")",
+                                "unit" : timeseriesMetaData["unit"],
+                                "types" : [MONSPEC_METRICTYPE_SERVICE]
+                            }
+                            
+                        # IF this entry defines a smartscape id fill this information up based on SmartScape Meta Data
+                        smartscape = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_SMARTSCAPE)
+                        if(smartscape is not None) :
+                            perfsignature[MONSPEC_PERFSIGNATURE_METRICID] = "custom:monspec." + smartscape.replace(":", ".") 
+                            perfsignature[MONSPEC_PERFSIGNATURE_METRICDEF] = { 
+                                MONSPEC_DISPLAYNAME : "",
+                                "unit" : "Count",
+                                "types" : [MONSPEC_METRICTYPE_SMARTSCAPE]
+                            }
+
+                            if(smartscape == "toRelationships:calls"):
+                                perfsignature[MONSPEC_PERFSIGNATURE_METRICDEF][MONSPEC_DISPLAYNAME] += "Outgoing Dependencies"
+                            elif(smartscape == "fromRelationships:calls"):
+                                perfsignature[MONSPEC_PERFSIGNATURE_METRICDEF][MONSPEC_DISPLAYNAME] += "Incoming Dependencies"
+                            elif(smartscape == "fromRelationships:runsOn"):
+                                perfsignature[MONSPEC_PERFSIGNATURE_METRICDEF][MONSPEC_DISPLAYNAME] += "Instance Count"
+                            else:
+                                perfsignature[MONSPEC_PERFSIGNATURE_METRICDEF][MONSPEC_DISPLAYNAME] += "smartscape"
+
+    return monspec;
+
+def createPipelineEntity(monspec, pipelineinfo):
+    "creates the actual pipeline custom device"
+    "returns: the output of the Create Custom Device API call"
+
+    # first we have to create the custom device itself
+    createPipelineResult = queryDynatraceAPIEx(HTTP_POST, API_ENDPOINT_CUSTOM + "/" + pipelineinfo[MONSPEC_DISPLAYNAME], "", pipelineinfo)
+    # print(createPipelineResult)
+    return createPipelineResult
+
+def createPerformanceSignatureMetrics(monspec):
+    "iterates through all perfsignature definitions in the whole monspec and creates the custom metrics"
+    "returns: the list of created metricIds"
+
+    createdMetrics = []
+    customMetricErrorCount = 0
+
+    # now we create all the metrics
+    for entitydefname in monspec:
+        for perfsignature in monspec[entitydefname][MONSPEC_PERFSIGNATURE] :
+            metricId = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_METRICID)
+            metricDef = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_METRICDEF)
+            if(metricId is not None and metricDef is not None):
+                try:
+                    queryDynatraceAPIEx(HTTP_PUT, API_ENDPOINT_TIMESERIES + "/" + metricId, "", metricDef)
+                    createdMetrics.append(metricId)
+                except Exception as e:
+                    customMetricErrorCount += 1
+
+    return createdMetrics
+
+def deletePerformanceSignatureMetrics(monspec):
+    "iterates through monspec and delets all custom device metrics"
+    "Returns: list of deleted metricIds"
+
+    deletedMetrics = []
+    customMetricErrorCount = 0
+
+    # now we delete all the metrics
+    for entitydefname in monspec:
+        for perfsignature in monspec[entitydefname][MONSPEC_PERFSIGNATURE] :
+            metricId = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_METRICID)
+            metricDef = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_METRICDEF)
+            if(metricId is not None and metricDef is not None):
+                try:
+                    queryDynatraceAPIEx(HTTP_DELETE, API_ENDPOINT_TIMESERIES + "/" + metricId, "", metricDef)
+                    deletedMetrics.append(metricId)
+                except Exception as e:
+                    customMetricErrorCount += 1
+                    
+    return deletedMetrics
+           
+def monspecConvertEntityType(monspecType):
+    "converts things like SERVICE into srv to be used when calling the commmand line options of dtcli"
+
+    entityTypes = ["app","srv","pg","host","pgi"]
+    entityTypesAlternative = ["APPLICATION", "SERVICE", "PROCESS_GROUP", "HOST", "PROCESS_GROUP_INSTANCE"]
+    return entityTypes[operator.indexOf(entityTypesAlternative, monspecType)]
+
+def arrayToStringList(objarray):
+    "returns a string of: object1,object2,object2"
+
+    returnString = ""
+    addComma = False
+    for obj in objarray:
+        if addComma: returnString += ","
+        addComma = True
+        returnString += obj
+
+    return returnString
+
+def calculateAverageOnAllDataPoints(timeseriesResultList):
+    "takes all results and calculate the actual AVG, SUM, COUNT across all results that came in"
+    "returns: average across all data points"
+
+    totalSum = 0
+    totalEntries = 0
+    totalAvg = 0
+
+    # Iterates through  [X][\"dataPoints\"][0 / 1] 0 = timestamp, 1= value"
+    for entityResultEntry in timeseriesResultList:
+        for dataPointEntry in timeseriesResultList[entityResultEntry]["dataPoints"]:
+            if(dataPointEntry[1] is not None): 
+                totalSum += dataPointEntry[1]
+                totalEntries += 1
+
+    if totalEntries > 0:
+        totalAvg = totalSum / totalEntries;
+    return totalAvg
+
+def queryEntitiesForMonspecEnvironment(monspec, entitydefname, environmentdefname):
+    "Queries the list of entities that match the monspec tag specification for the passed enviornment"
+    "Returns: list of entitiyId's"
+    return queryEntitiesForMonspecEnvironmentEx(monspec, entitydefname, environmentdefname, "entityId")
+    
+def queryEntitiesForMonspecEnvironmentEx(monspec, entitydefname, environmentdefname, returnedFieldList):
+    "Queries the list of entities that match the monspec tag specification for the passed enviornment"
+    "Allows you to specify which fields you want to have returned, e.g: \"entityId\" or \"entityId, displayName\" or \"*\""
+
+    # lets get the tags from the environment definition
+    entityType = monspec[entitydefname]["etype"]
+    tagsForQuery = monspec[entitydefname]["environments"][environmentdefname]["tags"]
+
+    # lets get the entity IDs that match the tags
+    foundEntities = doEntity(False, ["dtcli", "ent", monspecConvertEntityType(entityType), tagsForQuery, returnedFieldList], False)
+    return foundEntities    
+
+def pullMonspecMetrics(monspec, entitydefname, environmentdefname, timespan, timeshift, resultfield, demodata):
+    "Pulls each metric from the passed enviornment (e.g: staging, production, ...) and pulls the data for the specified timespan (in minutes) shifted by timeshift (in minutes)"
+    "Returns: actual perfsignature part of the monspec filled with the result metrics"
+
+    foundEntities = queryEntitiesForMonspecEnvironment(monspec, entitydefname, environmentdefname)
+
+    # now lets iterate through all the perfsignatures
+    for perfsignature in monspec[entitydefname][MONSPEC_PERFSIGNATURE]:
+        timeseries = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_TIMESERIES)
+        if(timeseries is not None) : 
+            if demodata:
+                perfsignature[resultfield] = 10
+            else:
+                timeseriesForQuery = perfsignature[MONSPEC_PERFSIGNATURE_TIMESERIES] + "[" + perfsignature[MONSPEC_PERFSIGNATURE_AGGREGATE] + "%" + timespan + ":" + timeshift + "]"
+                perfsignature[resultfield] = doTimeseries(False, ["dtcli", "ts", "query", timeseriesForQuery, arrayToStringList(foundEntities)], False)
+                perfsignature[resultfield] = calculateAverageOnAllDataPoints(perfsignature[resultfield])
+
+        smartscape = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_SMARTSCAPE)
+        if(smartscape is not None) :
+            if demodata:
+                perfsignature[resultfield] = 1
+            else:
+                # to evaluate the smartscape metrics we query the information from the SmartScape API for all matched enttities
+                perfsignature[resultfield] = 0
+                allMatchedEntities = queryEntitiesForMonspecEnvironmentEx(monspec, entitydefname, environmentdefname, "*")
+
+                # now we iterate through all entities and calculate the SUM in case we have more than one matching entity! TODO: is SUM really always good? or shall we provide Avg/Min/Max ... as well?
+                # our smartscape metrics look like this, e.g: fromRelationships:calls -> so we have to look at the fromRelationships and then count the calls list
+                for matchedEntity in allMatchedEntities:
+                    smartscapeMetricDefinition = smartscape.split(":")
+                    smartscapeValue = getAttributeOrNone(matchedEntity, smartscapeMetricDefinition[0])
+                    if(smartscapeValue is not None):
+                        smartscapeValue = getAttributeOrNone(smartscapeValue, smartscapeMetricDefinition[1])
+                        if(smartscapeValue is not None and type(smartscapeValue) is list):
+                            perfsignature[resultfield] += len(smartscapeValue)
+
+    return monspec[entitydefname]
+
+def pushMonspecMetrics(monspec, entitydefname, pipelineinfo):
+    "Pushes all result data from every perfsignature in monspec to the custom device of the pipeline"
+
+    # now lets iterate through all the perfsignatures and generate the two payloads for our service and smartscape metrics
+    timeseriesPayload = { "type" : MONSPEC_METRICTYPE_SERVICE, "series" : []}
+    smartscapePayload = { "type" : MONSPEC_METRICTYPE_SMARTSCAPE, "series" : []}
+    currentTimestamp = int(time.time() * 1000)
+    for perfsignature in monspec[entitydefname][MONSPEC_PERFSIGNATURE]:
+        customMetricValue = {"timeseriesId" : perfsignature[MONSPEC_PERFSIGNATURE_METRICID], "dataPoints" : [ [ currentTimestamp, perfsignature["result"] ] ]};
+
+        timeseries = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_TIMESERIES)
+        if(timeseries is not None) : 
+            timeseriesPayload["series"].append(customMetricValue);
+        else :
+            smartscapePayload["series"].append(customMetricValue);
+
+    # now we push the metrics to the pipeline
+    pushMetricsToPipeline = queryDynatraceAPIEx(HTTP_POST, API_ENDPOINT_CUSTOM + "/" + pipelineinfo[MONSPEC_DISPLAYNAME], "", timeseriesPayload)
+    print("Pushing Timeseries Metrics for " + pipelineinfo[MONSPEC_DISPLAYNAME] + " on " + str(pushMetricsToPipeline))
+
+    pushMetricsToPipeline = queryDynatraceAPIEx(HTTP_POST, API_ENDPOINT_CUSTOM + "/" + pipelineinfo[MONSPEC_DISPLAYNAME], "", smartscapePayload)
+    print("Pushing Smartscape Metrics for " + pipelineinfo[MONSPEC_DISPLAYNAME] + " on " + str(pushMetricsToPipeline))
+
+def pushThresholdPerMetric(monspec, entitydefname, pipelineinfo):
+    "Iterates through all timeseries - if no threshold is yet specified it calculates it based on the current value, upper/lower comparison and"
+
+    # TODO - implement reading scalefactors per metric
+    defaultScaleFactor = 30
+    thresholdMultipler = 1  # 1=PLUS - or -1=MINUS
+
+    for perfsignature in monspec[entitydefname][MONSPEC_PERFSIGNATURE]:
+        
+        # if no threshold is set in monspec we calculate one
+        threshold = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_THRESHOLD)
+        condition = getAttributeOrNone(perfsignature, "validate")
+        if condition == "lower":
+            condition = "BELOW"
+            thresholdMultipler = -1
+        else:
+            condition = "ABOVE"
+            thresholdMultipler = 1
+
+        if threshold is None :
+            if defaultScaleFactor > 0:
+                threshold = perfsignature[MONSPEC_PERFSIGNATURE_RESULT] + (thresholdMultipler*perfsignature["result"]*100)/defaultScaleFactor
+            else:
+                threshold = perfsignature[MONSPEC_PERFSIGNATURE_RESULT];
+
+        # now lets push the threshold to Dynatrace
+        thresholdDefName = "monspec." + pipelineinfo[MONSPEC_DISPLAYNAME] + perfsignature[MONSPEC_PERFSIGNATURE_METRICID].replace(":",".")
+        thresholdDefPayload = {
+            "timeseriesId" : perfsignature[MONSPEC_PERFSIGNATURE_METRICID],
+            "threshold" : threshold,
+            "alertCondition" : condition,
+            "samples" : 1,
+            "violatingSamples" : 1,
+            "dealertingSamples" : 1,
+            "eventType" : "ERROR_EVENT",
+            "eventName" : "Performance Signature Violation Detected",
+            "description" : "Discovered {severity} which violates {alert_condition}"
+        }
+
+        pushThreshold = queryDynatraceAPIEx(HTTP_PUT, API_ENDPOINT_THRESHOLDS + "/" + thresholdDefName, "", thresholdDefPayload)
+        print(pushThreshold)
+
+def getMonspecComparision(monspec, entity, comparisonname):
+    "Returns the Monspec Comparision section that matches the comparisonname"
+
+    for comparisonDef in monspec[entity]["comparisons"]:
+        if comparisonDef["name"] == comparisonname:
+            return comparisonDef
+    
+    return None
+
+def getScaleFactorForTimeseries(compareDef, timeseriesId):
+    "Returns the scale factor defined for the timeseriesId, or \"default\" or 0"
+
+    scaleFactorDef = getAttributeOrNone(compareDef, "scalefactorperc")
+    if scaleFactorDef is None:
+        return 0
+
+    scaleFactor = getAttributeOrNone(scaleFactorDef, timeseriesId)
+    if scaleFactor is None:
+        scaleFactor = getAttributeOrNone(scaleFactorDef, "default")
+
+    if scaleFactor is None:
+        scaleFactor = 0
+
+    return scaleFactor
+
+def calculateMonspecThresholdAndViolations(monspec, entity, compareDef, sourcefield, comparefield):
+    "# iterates through all results in monspec[entity][\"perfsignatures\"] and calculates the thresholds based on the compareDef"
+    "it will set \"threshold\" and \"violation\" field"
+
+    totalViolations = 0
+    for perfsignature in monspec[entity][MONSPEC_PERFSIGNATURE]:
+        sourceValue = getAttributeOrNone(perfsignature,sourcefield)
+        compareValue = getAttributeOrNone(perfsignature,comparefield)
+
+        # if there is no compare value we do not have any violation
+        if compareValue is None or sourceValue is None:
+            perfsignature[MONSPEC_PERFSIGNATURE_THRESHOLD] = None
+            perfsignature["violation"] = 0
+        else: 
+            # get the timeseries or smartscape id
+            timeseriesOrSmartscape = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_TIMESERIES)
+            if timeseriesOrSmartscape is None:
+                timeseriesOrSmartscape = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_SMARTSCAPE)
+
+            # now check what the scalefactor for that id is
+            scaleFactor = getScaleFactorForTimeseries(compareDef, timeseriesOrSmartscape)
+        
+            # now lets calculate it
+            condition = getAttributeOrNone(perfsignature, "validate")
+            thresholdMultipler = 1
+            if condition == "lower":
+                thresholdMultipler = -1
+            threshold = compareValue + (thresholdMultipler * compareValue * scaleFactor) / 100
+            perfsignature[MONSPEC_PERFSIGNATURE_THRESHOLD] = threshold
+
+            # now lets figure out whether there is a violation
+            if condition == "lower": perfsignature["violation"] = sourceValue < threshold
+            else: perfsignature["violation"] = sourceValue > threshold
+            if (perfsignature["violation"]):  perfsignature["violation"] = 1
+            else: perfsignature["violation"] = 0
+            
+            totalViolations += perfsignature["violation"]
+
+    return totalViolations
+
+# =========================================================
+# the following method is a pure TEST METHOD
+# allows me to test different combinations of parameters for my differnet use cases
+# =========================================================
 runTestSuite = False;
 def testMain():
     pass
@@ -441,7 +853,7 @@ def testMain():
         #doEntity(False, ["dtcli", "ent", "pg", "cloudFoundryAppNames=.*"], True)
         #doEntity(False, ["dtcli", "ent", "host", "ipAddresses=54\.86\..*"], True)
         #doEntity(False, ["dtcli", "ent", "pg", "softwareTechnologies/?type=TOMCAT"], True)
-        doEntity(False, ["dtcli", "ent", "pg", "softwareTechnologies/type#APACHE_HTTPD?version=2.*"], True)
+        #doEntity(False, ["dtcli", "ent", "pg", "softwareTechnologies/type#APACHE_HTTPD?version=2.*"], True)
 
         #doTimeseries(False, ["dtcli", "ts", "list"], True)
         #doTimeseries(False, ["dtcli", "ts", "list", ".*"], True)
@@ -490,13 +902,31 @@ def testMain():
         # doTag(False, ["dtcli","tag","srv","JourneyService","MyFirstTag,MySecondTag"])
         # doTag(False, ["dtcli","tag","app","entityId=APPLICATION-08EBD5603755FA87","MyEasyTravelAppTag"])
 
+        #doMonspec(False, ["dtcli", "monspec", "init", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json"], False)
+        #doMonspec(False, ["dtcli", "monspec", "remove", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json"], False)
+        doMonspec(False, ["dtcli", "monspec", "pull", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
+        #doMonspec(False, ["dtcli", "monspec", "push", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
+        #doMonspec(False, ["dtcli", "monspec", "base", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Production", "60", "0"], False)
+        #doMonspec(False, ["dtcli", "monspec", "pullcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60"], False)
+        #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60"], False)
+        #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60", "0"], False)
+        #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60", "60", "60"], False)
+        #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60", "http://myserver"], False)
+        #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60", "60", "60", "http://myserver"], False)
+        #doMonspec(False, ["dtcli", "monspec", "pushdeploy", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "Job123Deployment", "v123"], False)
+        #doMonspec(False, ["dtcli", "monspec", "demopull", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
+        #doMonspec(False, ["dtcli", "monspec", "demopush", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
+        #doMonspec(False, ["dtcli", "monspec", "demobase", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
+
     except Exception as e:
         handleException(e)
     exit
 
+# =========================================================
 # The REAL Main Method!
+# =========================================================
 def main():
-    
+
     try:
         readConfig()
         command = "usagae"
@@ -554,7 +984,7 @@ def doUsage(args):
     print("Usage: Dynatrace Command Line Interface")
     print("=========================================")
     print("dtcli <command> <options>")
-    print("commands: ent=entities, ts=timerseries, prob=problems, evt=events, dql=Dynatrace Query Language, dqlr=DQL Reporting, tag=tagging, config")
+    print("commands: ent=entities, ts=timerseries, prob=problems, evt=events, dql=Dynatrace Query Language, dqlr=DQL Reporting, tag=tagging, monspec=Monitoring as Code, config")
     print("=========================================")
     print("To configure access token and Dynatrace REST Endpoint use command 'config'")
     print("For more information on a command use: dtcli help <command>")
@@ -564,7 +994,7 @@ def doEntity(doHelp, args, doPrint):
     if doHelp:
         if(doPrint):
             print("dtcli ent <type> <query> <resulttags|*>")
-            print("type: app | srv | pg | host")
+            print("type: app | srv | pg | host | tags")
             print("Examples:")
             print("===================")
             print("dtcli ent app .*easyTravel.*")
@@ -574,9 +1004,10 @@ def doEntity(doHelp, args, doPrint):
             print("dtcli ent srv serviceTechnologyTypes=ASP.NET discoveredName")
             print("dtcli ent srv tag/?key=v123 *")
             print("dtcli ent app .*easyTravel.* displayName")
+            print("dtcli ent srv {tagdef} entityId")
     else:
-        entityTypes = ["app","srv","pg","host"]
-        entityEndpoints = [API_ENDPOINT_APPLICATIONS, API_ENDPOINT_SERVICES, API_ENDPOINT_PROCESS_GROUPS, API_ENDPOINT_HOSTS]
+        entityTypes = ["app","srv","pg","host","pgi"]
+        entityEndpoints = [API_ENDPOINT_APPLICATIONS, API_ENDPOINT_SERVICES, API_ENDPOINT_PROCESS_GROUPS, API_ENDPOINT_HOSTS, API_ENDPOINT_PROCESSES]
         if (len(args) <= 2) or not operator.contains(entityTypes, args[2]):
             # Didnt provide the correct parameters - show help!
             doEntity(True, args, doPrint)
@@ -586,9 +1017,28 @@ def doEntity(doHelp, args, doPrint):
 
             # As the Dynatrace API currently doesnt suppot all the filtering that we want to provide through this CLI we have to parse the response and filter in our script
             apiEndpoint = operator.getitem(entityEndpoints, operator.indexOf(entityTypes, args[2]))
-            jsonContent = queryDynatraceAPI(True, apiEndpoint, "", "")
+
+            # if arg(3) is a tag object we convert it into a queryurl and then set it to empty string
+            queryString = ""
+            if(type(args[3] is list)) :
+                for tagEntry in args[3]:                    
+                    if(len(queryString) > 0):
+                        queryString += " AND "
+                    context = getAttributeOrNone(tagEntry, "context")
+                    key = getAttributeOrNone(tagEntry, "key")
+                    value = getAttributeOrNone(tagEntry, "value")
+                    if((context is not None) and (context != "CONTEXTLESS")) : queryString += ("[" + context + "]")
+                    if(key is not None): queryString += (key + ":")
+                    if(value is not None): queryString += value
+
+                queryString = "tag=" + queryString
+                args[3] = None
+
+            # execute our query - potentially with a queryString that contains ?tag=
+            jsonContent = queryDynatraceAPI(True, apiEndpoint, queryString, "")
             resultTag = "entityId"
 
+            # see if there is any other filter specified
             if len(args) > 3:
                 nameValue = parseNameValue(args[3], "displayName", "")
                 if(len(args) > 4):
@@ -756,7 +1206,8 @@ def doTimeseries(doHelp, args, doPrint):
             doTimeseries(True, args, doPrint)
 
 def doConfig(doHelp, args):
-    
+    "Allows you to set configuration settings which will be stored to dtconfig.json"
+
     if not doHelp and len(args) > 2 and args[2] == "revert":
         config["apitoken"] = "smpltoken"
         config["tenanthost"] = "smpljson"
@@ -797,7 +1248,7 @@ def doConfig(doHelp, args):
         saveConfig()
 
 def doCheckTempConfigParams(args, argIndex):
-    # special check for Dynatrace Token and Dynatrace URL. We allows this to pass in the credentials without having to go through config. this makes this query completely stateless
+    "special check for Dynatrace Token and Dynatrace URL. We allows this to pass in the credentials without having to go through config. this makes this query completely stateless"
     if(len(args) > argIndex):
         config["tenanthost"] = args[argIndex]     
     if(len(args) > argIndex+1):
@@ -999,8 +1450,8 @@ def doEvent(doHelp, args, doPrint):
         print("dtcli evt push entityId HOST-776CE98524279B25")
         print("dtcli evt push host .*demo.*")
         print("dtcli evt push host tags/Environment=Staging deploymentName=StageDeployment deploymentVersion=1.1")
-        print("dtcli evt push ent HOST-776CE98524279B25 start=1234124123000 end=0 deploymentName=StageDeployment deploymentVersion=1.0 deploymentProject=easyTravel source=Jenkins ciBackLink=http://myjenkins remediationAction=http://myremediationaction")
-        print("dtcli evt push ent HOST-776CE98524279B25,APPLICATION-F5E7AEA0AB971DB1 deploymentName=StageDeployment source=Jenkins mycustomproperty=my%20custom%value someotherpropoerty=someothervalue")
+        print("dtcli evt push entityId HOST-776CE98524279B25 start=1234124123000 end=0 deploymentName=StageDeployment deploymentVersion=1.0 deploymentProject=easyTravel source=Jenkins ciBackLink=http://myjenkins remediationAction=http://myremediationaction")
+        print("dtcli evt push entityId HOST-776CE98524279B25,APPLICATION-F5E7AEA0AB971DB1 deploymentName=StageDeployment source=Jenkins mycustomproperty=my%20custom%value someotherpropoerty=someothervalue")
         print("-----")
         print("dtcli evt push entityId HOST-776CE98524279B25 http://yourtenant.live.dynatrace.com YOURAPITOKEN")
     else:
@@ -1117,48 +1568,196 @@ def doEvent(doHelp, args, doPrint):
             if doPrint:
                 print(response)
 
+            return response
+
 def doMonspec(doHelp, args, doPrint):
-    "TODO: Allows you to extract validate monspec for source or comparision or perform the actual comparison"
+    "Implements all use cases for Monitoring as Code (monspec). You can query timeseries for specific tagged entities, compare them with other data sources, get violations and also store these datapoints in Dynatrace as custom metrics"
     if doHelp:
         if(doPrint):
-            print("dtcli monspec tag type <entityId|query> <list of tags>")
-            print("type: app | srv | pg | host")
+            print("dtcli monspec action monspec.json pipeline.json <action specific args>")
+            print("action: init | remove | pull | push | base | pullcompare | pushcompare | pushdeploy | demopull | demopush")
             print("Examples:")
             print("===================")
-            print("dtcli tag app .*easyTravel.* easyTravelAppTag")
-            print("dtcli tag srv JourneyService journeyServiceTag,serviceTag")
-            print("dtcli tag app entityId=APPLICATION-F5E7AEA0AB971DB1 easyTravelAppTag")
-            print("--------------------")
-            print("dtcli tag app .*easyTravel.* easyTravelAppTag tenant.live.dynatrace.com APITOKEN")
+            print("dtcli monspec init monspec.json pipelineinfo.json")
+            print("dtcli monspec remove monspec.json pipelineinfo.json")
+            print("dtcli monspec pull monspec.json pipelineinfo.json SampleJSonService/Staging 60 0")
+            print("dtcli monspec push monspec.json pipelineinfo.json SampleJSonService/Staging 60 0")
+            print("dtcli monspec base monspec.json pipelineinfo.json SampleJSonService/Staging 60 60")
+            print("dtcli monspec pullcompare monspec.json pipelineinfo.json SampleJSonService/ProductionToStaging 60")
+            print("dtcli monspec pullcompare monspec.json pipelineinfo.json SampleJSonService/ProductionToStaging 60 0 0")
+            print("dtcli monspec pushcompare monspec.json pipelineinfo.json SampleJSonService/ProductionToStaging 60")
+            print("dtcli monspec pushcompare monspec.json pipelineinfo.json SampleJSonService/ProductionToStaging 60 0 60")
+            print("dtcli monspec pushdeploy monspec.json pipelineinfo.json SampleJSonService/Staging Job123Deployment v123")
+            print("dtcli monspec demopull monspec.json pipelineinfo.json SampleJSonService/Staging")
+            print("dtcli monspec demopush monspec.json pipelineinfo.json SampleJSonService/Staging")
+            print("dtcli monspec demobase monspec.json pipelineinfo.json SampleJSonService/Staging")
     else:
-        entityTypes = ["app","srv","pg","host"]
-        entityEndpoints = [API_ENDPOINT_APPLICATIONS, API_ENDPOINT_SERVICES, API_ENDPOINT_PROCESS_GROUPS, API_ENDPOINT_HOSTS]
-        if (len(args) <= 4) or not operator.contains(entityTypes, args[2]):
+        actionTypes = ["init", "remove", "pull", "push", "base", "pullcompare", "pushcompare", "pushdeploy", "demopull", "demopush", "demobase"]
+        action = args[2]
+        if (len(args) <= 4) or not operator.contains(actionTypes, args[2]):
             # Didnt provide the correct parameters - show help!
-            doTag(True, args, doPrint)
-        else:
-            # lets check our special token param
+            doMonspec(True, args, doPrint)
+            return;
+
+        # will get the actual result JSON which will be printed out at the end
+        result = {}
+
+        # This is the initial monspec parse WITHOUT the metadata check. MetaData check will make calls back to Dynatrace to fill in metric data information. ONLY fill in metadata later when really needed
+        monspec = parseMonspec(args[3], False)
+        if monspec == None:
+            result["error"] = "Cannot parse monspec file " + args[3]
+            print(result)
+            return;
+
+        # lets parse the pipelineinfo
+        pipelineInfo = parsePipelineInfo(args[4])
+        if pipelineInfo == None:
+            result["error"] = "Cannot parse pipeline file " + args[4]
+            print(result)
+            return;
+
+        if action == "init":
+            # check additional parameters first - then parse monspec metadata
             doCheckTempConfigParams(args, 5)
+            monspec = parseMonspec(args[3], True)
 
-            # Now we either parse the list of entityIds from the arguments or we query for them by using doEntity
-            apiEndpoint = operator.getitem(entityEndpoints, operator.indexOf(entityTypes, args[2]))
-            tagableEntities = []
-            if args[3].startswith("entityId="):
-                entityString = args[3][9:]
-                tagableEntities = entityString.split(",")
-            else:
-                tagableEntities = doEntity(False, ["dtcli", "ent", args[2], args[3]], False)
+            # creates the Custom Device for the passed pipeline name, the additoinal info in pipelineinfo.json and all the metrics as defined in monspec.json
+            result["customDevice"] = createPipelineEntity(monspec, pipelineInfo)
+            result["createdMetrics"] = createPerformanceSignatureMetrics(monspec)
 
-            # do we have any entities to tag?
-            if len(tagableEntities) == 0:
-                raise Exception("Error", "No entities specified or query doesnt match any entites")
+            print(result)
+        elif action == "remove": 
+            # check additional parameters first - then parse monspec metadata
+            doCheckTempConfigParams(args, 5)
+            monspec = parseMonspec(args[3], True)
 
-            # lets tag em
-            tags = { "tags" : args[4].split(",")}
-            for entity in tagableEntities:
-                queryDynatraceAPI(False, apiEndpoint + "/" + entity, "", tags)
+            # delete all metrcs
+            result["deletedMetrics"] = deletePerformanceSignatureMetrics(monspec)
 
-            return tagableEntities;
+            print(result)
+        elif action == "pull" or action == "push" or action == "base":
+            # check additional parameters first - then parse monspec metadata
+            doCheckTempConfigParams(args, 8)
+            monspec = parseMonspec(args[3], True)
+
+            # pulls the live values from dynatrace based for the defined environment
+            # pull: and writes the results as JSON to the Console
+            # push: also pushes the metrics to dynatrace
+            # base: sets thresholds
+            envservicenames = args[5].split("/")
+            pulledPerformanceSignature = pullMonspecMetrics(monspec, envservicenames[0], envservicenames[1], args[6], args[7], MONSPEC_PERFSIGNATURE_RESULT, False)
+            result = { "performanceSignature" : pulledPerformanceSignature}
+
+            if action == "pull":
+                result["comment"] = "Pulled metrics for " + args[5]
+            if action == "push":
+                pushMonspecMetrics(monspec, envservicenames[0], pipelineInfo)
+                result["comment"] = "Pushed metrics for " + args[5]
+            if action == "base":
+                pushThresholdPerMetric(monspec, envservicenames[0], pipelineInfo)
+                result["comment"] = "Pushed threshold definitions for " + args[5]
+
+            print(result)
+        elif action == "pullcompare" or action == "pushcompare":
+            # can be called with two additonal parameters at the end which are optional. based on that we have to figure out how to check our temp parameter config
+            tempArgStart = 7
+            optionalShiftSourceTimeframe = None
+            optionalShiftCompareTimeframe = None
+            if ((len(args) > 7) and isNumeric(args[7])):
+                tempArgStart = 8
+                optionalShiftSourceTimeframe = int(args[7])
+            if ((len(args) > 8) and isNumeric(args[8])):
+                tempArgStart = 9
+                optionalShiftCompareTimeframe = int(args[8])
+
+            # check additional parameters first - then parse monspec metadata
+            doCheckTempConfigParams(args, tempArgStart)
+            monspec = parseMonspec(args[3], True)
+
+            # pulls in the source and compare and then factors in the scale factor for violation calculation
+            # this call returns the actual source, compare, threshold and violation metrics as a JSON output
+            envcomparenames = args[5].split("/")
+            compareDef = getMonspecComparision(monspec, envcomparenames[0], envcomparenames[1])
+            if(compareDef is None):
+                result["error"] = "Cant find comparision definition for " + args[5]
+                print(result)
+                return;
+            
+            # lets pull in the source data - either take the shift from shiftsourcetimeframe or from the parameters
+            shifttimeframe = str(compareDef["shiftsourcetimeframe"])
+            if optionalShiftSourceTimeframe is not None:
+                shifttimeframe = optionalShiftSourceTimeframe
+            pullMonspecMetrics(monspec, envcomparenames[0], compareDef[MONSPEC_PERFSIGNATURE_SOURCE], args[6], shifttimeframe, MONSPEC_PERFSIGNATURE_RESULT, False)
+
+            # now we pull in the compare data - either take the shift from shiftcomparetimeframe or from the parameters
+            shifttimeframe = str(compareDef["shiftcomparetimeframe"])
+            if optionalShiftCompareTimeframe is not None:
+                shifttimeframe = optionalShiftCompareTimeframe
+            pulledPerformanceSignature = pullMonspecMetrics(monspec, envcomparenames[0], compareDef[MONSPEC_PERFSIGNATURE_COMPARE], args[6], shifttimeframe, MONSPEC_PERFSIGNATURE_RESULT_COMPARE, False)
+            result["performanceSignature"] = pulledPerformanceSignature
+
+            # now we calculate the thresholds based on "result_compare" and set the violation
+            totalViolations = calculateMonspecThresholdAndViolations(monspec, envcomparenames[0], compareDef, MONSPEC_PERFSIGNATURE_RESULT, MONSPEC_PERFSIGNATURE_RESULT_COMPARE)
+
+            # push thresholds & metrics to Dynatrace
+            if action == "pushcompare":
+                pushThresholdPerMetric(monspec, envcomparenames[0], pipelineInfo)
+                pushMonspecMetrics(monspec, envcomparenames[0], pipelineInfo)
+                result["comment"] = "Pushed compare for " + args[6]
+            if action == "pullcompare":
+                result["comment"] = "Pulled compare for " + args[6]                
+
+            result["totalViolations"] = totalViolations;
+            print(result)
+        elif action == "pushdeploy":
+            # check additional parameters first - no need to parse monspec data
+            doCheckTempConfigParams(args, 8)
+
+            # pushes a deployment event to the specified entities
+            envservicenames = args[5].split("/")
+            foundEntities = queryEntitiesForMonspecEnvironment(monspec, envservicenames[0], envservicenames[1])
+            if foundEntities is None or len(foundEntities) == 0:
+                result = {"error": "No active Dynatrace Entities found for " + args[5] + ". Cant push deployment information"}
+                print(result)
+                return;
+
+            # Get the entityId of our Pipeline and also push the deployment to the pipeline itself
+            # TODO: query pipeline entity id!
+
+            # build the list of arguments for calling doEvent - hre is an example
+            # dtcli evt push entityId SERVICE-1234,SERVICE-5678 deploymentName=JobDeployment deploymentVersion=123 source=My%20Pipeline owner=My%20team
+            eventArgs = ["dtcli", "evt", "push", "entityId", arrayToStringList(foundEntities)]
+            eventArgs.extend(["deploymentName=" + args[6], "deploymentVersion=" + args[7], "source=" + pipelineInfo["displayName"], "Monspec%20Entity=" + envservicenames[0], "Monspec%20Environment=" + envservicenames[1]])
+            owner = getAttributeOrNone(monspec[envservicenames[0]], "owner")
+            if owner is not None: 
+                eventArgs.append("owner=" + encodeString(owner))        
+
+            # actually create the event
+            event = doEvent(False, eventArgs, False)
+
+            result = {"event" : event}
+            print(result)
+        elif action == "demopull":
+            # DEMO for Testing
+            envservicenames = args[5].split("/")
+            pulledPerformanceSignature = pullMonspecMetrics(monspec, envservicenames[0], envservicenames[1], args[6], args[7], MONSPEC_PERFSIGNATURE_RESULT, True)
+            print("Pulled Demo Data")
+            print(pulledPerformanceSignature)
+        elif action == "demopush":
+            # DEMO for Testing
+            envservicenames = args[5].split("/")
+            pullMonspecMetrics(monspec, envservicenames[0], envservicenames[1], args[6], args[7], MONSPEC_PERFSIGNATURE_RESULT, True)
+            pushMonspecMetrics(monspec, envservicenames[0], pipelineInfo)
+            print("Pushed Demo Data")
+        elif action == "demobase":
+            # DEMO for Testing
+            envservicenames = args[5].split("/")
+            pullMonspecMetrics(monspec, envservicenames[0], envservicenames[1], args[6], args[7], MONSPEC_PERFSIGNATURE_RESULT, True)
+            pushThresholdPerMetric(monspec, envservicenames[0], pipelineInfo)
+            print("Pushed Demo Base")
+        else:
+            print("No Action!")
+
     return None
 
 def doLink(doHelp, args, doPrint):

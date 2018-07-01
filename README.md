@@ -19,6 +19,7 @@ Generated report for host tags/AWS:Name=et-demo.* host.cpu.system[max%hour],host
 * Generate HTML Reports of timeseries data based on DQL Query
 * Push Custom Events (Deployments, Configuration Changes, Test Events, ...) to monitored entities
 * Define Custom Tags for entities
+* Monitoring as Code: Enforce monspec.json in your Continuous Delivery Pipeline
 * (TBD) Access Dynatrace problem details and add comments
 * (TBD) Push Custom Metrics
 
@@ -186,3 +187,60 @@ Generated report for host tags/AWS:Name=et-demo.* host.cpu.system[max%hour],host
 ```
 ![](./images/sampledqlreport.png)
 
+## Examples: Monitoring as Code (monspec)
+
+To learn more about the concept of Monitoring as Code check out the material around the [Unbreakable Delivery Pipeline](https://www.dynatrace.com/news/blog/unbreakable-devops-pipeline-shift-left-shift-right-self-healing/). 
+The CLI now implements the main uses to gather and compare metrics as part of your CI/CD Delivery Pipeline. All gathered and compared data will end up as a Custom Device with Custom Metrics in Dynatrace, e.g: "My Jenkins Pipeline" with metrics such as "Response Time", "Throughput" or "Number of Incoming Dependencies". 
+The CLI requires two configuration files for which you can find sample definitions in the monspec subfolder:
+* smplmonspec.json: defines the entity (APPLICATION, SERVICE, PROCESS, HOST) that you want to monitor, the environments where these entities are deployed, comparison definitions as well as a set of key performance metrics (=Performance Signature) that should be validated each time you call the CLI
+* smplpipelineinfo.json: describes the pipeline or tool that calls the CLI. This information will define the Custom Device
+
+Here now the set of calls to use to integrate with your CI/CD Pipeline:
+```
+> py dtcli.py monspec init monspec/smplmonspec.json monspec/smplpipelineinfo.json
+Creates the Custom Device based on smplpipelineinfo.json and all custom metrics based on smplmonspec and the perfsignature definition
+Output: {"customDevice" : "CUSTOM-DEVICE-1234", "createMetrics" : 6}
+
+> py dtcli.py monspec remove monspec/smplmonspec.json monspec/smplpipelineinfo.json
+Removes the custom metric defintions and all its data: BE CAREFUL: this will remove all previous data from previous runs!
+Output: {"deletedMetrics" : 6}
+
+> py dtcli.py monspec pull monspec/smplmonspec.json monspec/smplpipelineinfo.json SampleJSonService/Staging 60 0
+Queries all perfsignature metrics defined for the SampleJSonService in the Staging Environment for the last 60 minutes. The last two parameters define timespan (e.g: 60) and timeshift from now (e.g: 0=Now, 60=60 Minutes ago, ...)
+Results will only be printed on the console. NO DATA WRITTEN TO DYNATRACE!
+Output: { "performanceSignature" : [ {"timeseries": "com.dynatrace.builtin:service.responsetime", "result" : 1234, .... } ], "comment" : "Pulled metrics for SampleJSonService/Staging"}
+
+> py dtcli.py monspec push monspec/smplmonspec.json monspec/smplpipelineinfoo.json SampleJSonService/Staging 60 0
+Same as "dtcli monspec pull" but metrics will be written to the Dynatrace Custom Device for your Pipeline.
+Suggestion: call this from your pipeline at the end of your test runs or even throughout your test run to pull in current metrics and store them on the custom device
+Output: { "performanceSignature" : [ {"timeseries": "com.dynatrace.builtin:service.responsetime", "result" : 1234, .... } ], "comment" : "Pushed metrics for SampleJSonService/Staging"}
+
+> py dtcli.py monspec base monspec/smplmonspec.json monspec/smplpipelineinfo.json SampleJSonService/Staging 60 60
+Sets custom thresholds for each metric defined in monspec. The data is taken from the defined environment and timeframe, e.g: from Staging 60 minutes 60 minutes ago. 
+Suggestion: This is useful if you have a reference timeframe and environment and you want these values to be your baseline (=threshold). Once set it means that Dynatrace will automatically open Problem Tickets once you "dtcli monspec push". 
+Output: { "performanceSignature" : [ {"timeseries": "com.dynatrace.builtin:service.responsetime", "result" : 1234, .... } ], "comment" : "Pushed theshold definition for SampleJSonService/Staging"}
+
+> py dtcli.py monspec pullcompare monspec/smplmonspec.json monspec/smplpipelineinfo.json SampleJSonService/ProductionToStaging 60
+pullcompare will look at the passed comparision, e.g: ProductionToStaging. It will pull in the metrics for the "compare" environment, and then calcultes the baseline (=thresholds) on every custom device based on these values but also factoring in the scalefactor definition. 
+After that it queries the "source" environment, compares the values with the calculated baseline and calculates how many violations you had.
+All results for each perfsignature metric will be printed on the console. NO DATA WRITTEN TO DYNATRACE!
+Output: { "performanceSignature" : [ {"timeseries": "com.dynatrace.builtin:service.responsetime", "result" : 1234, "result_compare" : 1100, "threshold" : 1200, "violation" : 1.... } ], "totalViolations" : 1, "comment": "Pulled compare for SampleJSonService/ProductionToStaging 60"}
+
+> py dtcli.py monspec pullcompare monspec/smplmonspec.json monspec/smplpipelineinfo.json SampleJSonService/ProductionToStaging 60 0 0
+This is another variation of pullcompare where you can overwrite the values for shiftcomparetimeframe & shiftsourcetimeframe
+Output: { "performanceSignature" : [ {"timeseries": "com.dynatrace.builtin:service.responsetime", "result" : 1234, "result_compare" : 1100, "threshold" : 1200, "violation" : 1.... } ], "totalViolations" : 1, "comment": "Pulled compare for SampleJSonService/ProductionToStaging 60 0 0"}
+
+> py dtcli.py monspec pushcompare monspec/smplmonspec.json monspec/smplpipelineinfo.json SampleJSonService/ProductionToStaging 60
+Same as "dtcli monspec pullcompare" but in this case actually pushes the thresholds back to Dynatrace followed by pushing the actual values. If there are any violations it will also open a problem ticket in Dynatrace. 
+Output: { "performanceSignature" : [ {"timeseries": "com.dynatrace.builtin:service.responsetime", "result" : 1234, "result_compare" : 1100, "threshold" : 1200, "violation" : 1.... } ], "totalViolations" : 1, "comment": "Pushed compare for SampleJSonService/ProductionToStaging"}
+
+> py dtcli.py monspec pushcompare monspec/smplmonspec.json monspec/smplpipelineinfo.json SampleJSonService/ProductionToStaging 60 0 60
+This is another variation of pullpush where you can overwrite the values for shiftcomparetimeframe & shiftsourcetimeframe
+Output: { "performanceSignature" : [ {"timeseries": "com.dynatrace.builtin:service.responsetime", "result" : 1234, "result_compare" : 1100, "threshold" : 1200, "violation" : 1.... } ], "totalViolations" : 1, "comment": "Pushed compare for SampleJSonService/ProductionToStaging"}
+
+> py dtcli.py monspec pushdeploy monspec/smplmonspec.json monspec/smplpipelineinfo.json SampleJSonService/Staging Job123Deployment v123
+Creates a Deployment Event for all entities matching Staging
+Suggestion: Call this from your pipeline after deploying your new build. You will see the deployment and build information in Dynatrace
+Output : { "event" : { "eventId" : "ADBC", ...}}
+
+```
