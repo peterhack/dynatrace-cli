@@ -44,9 +44,15 @@ MONSPEC_PERFSIGNATURE_COMPARE = "compare"
 MONSPEC_PERFSIGNATURE_THRESHOLD = "threshold"
 MONSPEC_PERFSIGNATURE_RESULT = "result"
 MONSPEC_PERFSIGNATURE_RESULT_COMPARE = "result_compare"
+MONSPEC_PERFSIGNATURE_UPPERLIMIT = "upperlimit"
+MONSPEC_PERFSIGNATURE_LOWERLIMIT = "lowerlimit"
 MONSPEC_DISPLAYNAME = "displayName"
 MONSPEC_METRICTYPE_SERVICE = "Monspec Service Metric"
 MONSPEC_METRICTYPE_SMARTSCAPE = "Monspec Smartscape Metric"
+
+MONSPEC_DATAHANDLING_NORMAL = 0
+MONSPEC_DATAHANDLING_IGNORE_ERROR = 1
+MONSPEC_DATAHANDLING_DEMODATA = -1
 
 # =========================================================
 # Global Configuration, logging, execute REST requests ...
@@ -603,6 +609,25 @@ def arrayToStringList(objarray):
         returnString += obj
 
     return returnString
+    
+def removeFieldsStartsWith(obj, fieldnameprefix):
+    "iterates through all fields of obj and removes those that have a name that starts with fieldnameprefix"
+    delfields = []
+    for field in obj:
+        fieldType = type(field)
+        if(fieldType is dict or fieldType is list):
+            removeFieldsStartsWith(field, fieldnameprefix)
+        else:
+            if field.startswith(fieldnameprefix):
+                delfields.append(field)
+    for field in delfields:
+        del obj[field]
+
+def cleanPerformanceSignature(perfsignature):
+    "Removes temporary and comment fields not necessary for output"
+    removeFieldsStartsWith(perfsignature, "_")
+    removeFieldsStartsWith(perfsignature, MONSPEC_PERFSIGNATURE_METRICDEF)
+    removeFieldsStartsWith(perfsignature, MONSPEC_PERFSIGNATURE_METRICID)    
 
 def calculateAverageOnAllDataPoints(timeseriesResultList):
     "takes all results and calculate the actual AVG, SUM, COUNT across all results that came in"
@@ -640,31 +665,47 @@ def queryEntitiesForMonspecEnvironmentEx(monspec, entitydefname, environmentdefn
     foundEntities = doEntity(False, ["dtcli", "ent", monspecConvertEntityType(entityType), tagsForQuery, returnedFieldList], False)
     return foundEntities    
 
-def pullMonspecMetrics(monspec, entitydefname, environmentdefname, timespan, timeshift, resultfield, demodata):
+def pullMonspecMetrics(monspec, entitydefname, environmentdefname, timespan, timeshift, resultfield, datahandling):
     "Pulls each metric from the passed enviornment (e.g: staging, production, ...) and pulls the data for the specified timespan (in minutes) shifted by timeshift (in minutes)"
+    "datahandling: NORMAL=pulls data - in case no data throws an error; IGNOREERROR=pulls data but - in case no data available we return no data instead of error; DEMODATA=return demodata"
     "Returns: actual perfsignature part of the monspec filled with the result metrics"
 
     foundEntities = queryEntitiesForMonspecEnvironment(monspec, entitydefname, environmentdefname)
 
     # now lets iterate through all the perfsignatures
-    for perfsignature in monspec[entitydefname][MONSPEC_PERFSIGNATURE]:
+    perfSignatureDefinition = monspec[entitydefname][MONSPEC_PERFSIGNATURE]
+    for perfsignature in perfSignatureDefinition:
         timeseries = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_TIMESERIES)
         if(timeseries is not None) : 
-            if demodata:
+            if datahandling == MONSPEC_DATAHANDLING_DEMODATA:
                 perfsignature[resultfield] = 10
             else:
                 timeseriesForQuery = perfsignature[MONSPEC_PERFSIGNATURE_TIMESERIES] + "[" + perfsignature[MONSPEC_PERFSIGNATURE_AGGREGATE] + "%" + timespan + ":" + timeshift + "]"
-                perfsignature[resultfield] = doTimeseries(False, ["dtcli", "ts", "query", timeseriesForQuery, arrayToStringList(foundEntities)], False)
-                perfsignature[resultfield] = calculateAverageOnAllDataPoints(perfsignature[resultfield])
+                try :
+                    perfsignature[resultfield] = doTimeseries(False, ["dtcli", "ts", "query", timeseriesForQuery, arrayToStringList(foundEntities)], False)
+                    perfsignature[resultfield] = calculateAverageOnAllDataPoints(perfsignature[resultfield])
+                except Exception as err:
+                    if datahandling == MONSPEC_DATAHANDLING_NORMAL:
+                        raise err
+                    else:
+                        perfsignature[resultfield] = None
 
         smartscape = getAttributeOrNone(perfsignature, MONSPEC_PERFSIGNATURE_SMARTSCAPE)
         if(smartscape is not None) :
-            if demodata:
+            if datahandling == MONSPEC_DATAHANDLING_DEMODATA:
                 perfsignature[resultfield] = 1
             else:
                 # to evaluate the smartscape metrics we query the information from the SmartScape API for all matched enttities
                 perfsignature[resultfield] = 0
-                allMatchedEntities = queryEntitiesForMonspecEnvironmentEx(monspec, entitydefname, environmentdefname, "*")
+
+                try:
+                    allMatchedEntities = queryEntitiesForMonspecEnvironmentEx(monspec, entitydefname, environmentdefname, "*")
+                except Exception as err:
+                    if datahandling == MONSPEC_DATAHANDLING_NORMAL:
+                        raise err
+                    else:
+                        perfsignature[resultfield] = None
+                        allMatchedEntities = []
 
                 # now we iterate through all entities and calculate the SUM in case we have more than one matching entity! TODO: is SUM really always good? or shall we provide Avg/Min/Max ... as well?
                 # our smartscape metrics look like this, e.g: fromRelationships:calls -> so we have to look at the fromRelationships and then count the calls list
@@ -676,7 +717,7 @@ def pullMonspecMetrics(monspec, entitydefname, environmentdefname, timespan, tim
                         if(smartscapeValue is not None and type(smartscapeValue) is list):
                             perfsignature[resultfield] += len(smartscapeValue)
 
-    return monspec[entitydefname]
+    return perfSignatureDefinition
 
 def pushMonspecMetrics(monspec, entitydefname, pipelineinfo):
     "Pushes all result data from every perfsignature in monspec to the custom device of the pipeline"
@@ -771,14 +812,37 @@ def getScaleFactorForTimeseries(compareDef, timeseriesId):
 def calculateMonspecThresholdAndViolations(monspec, entity, compareDef, sourcefield, comparefield):
     "# iterates through all results in monspec[entity][\"perfsignatures\"] and calculates the thresholds based on the compareDef"
     "it will set \"threshold\" and \"violation\" field"
+    "it will also look at upperlimit and lowerlimit IF defined"
 
     totalViolations = 0
     for perfsignature in monspec[entity][MONSPEC_PERFSIGNATURE]:
         sourceValue = getAttributeOrNone(perfsignature,sourcefield)
+        
+        # no source value? no comparision!
+        if sourceValue is None:
+            continue
+        
         compareValue = getAttributeOrNone(perfsignature,comparefield)
 
+        # first check is against static thresholds - in case they are defined!
+        upperLimitValue = getAttributeOrNone(perfsignature,MONSPEC_PERFSIGNATURE_UPPERLIMIT)
+        if upperLimitValue is not None:
+            perfsignature[MONSPEC_PERFSIGNATURE_THRESHOLD] = upperLimitValue
+            if sourceValue > upperLimitValue:
+                perfsignature["violation"] = 1
+            continue
+
+        lowerLimitValue = getAttributeOrNone(perfsignature,MONSPEC_PERFSIGNATURE_LOWERLIMIT)
+        if lowerLimitValue is not None and sourceValue is not None:
+            perfsignature[MONSPEC_PERFSIGNATURE_THRESHOLD] = lowerLimitValue
+            if sourceValue < lowerLimitValue:
+                perfsignature["violation"] = 1
+            continue
+
+        # NO STATIC THRESHOLDS -> in that case - lets do the regular comparision!
+
         # if there is no compare value we do not have any violation
-        if compareValue is None or sourceValue is None:
+        if compareValue is None:
             perfsignature[MONSPEC_PERFSIGNATURE_THRESHOLD] = None
             perfsignature["violation"] = 0
         else: 
@@ -904,10 +968,10 @@ def testMain():
 
         #doMonspec(False, ["dtcli", "monspec", "init", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json"], False)
         #doMonspec(False, ["dtcli", "monspec", "remove", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json"], False)
-        doMonspec(False, ["dtcli", "monspec", "pull", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
+        #doMonspec(False, ["dtcli", "monspec", "pull", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
         #doMonspec(False, ["dtcli", "monspec", "push", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
         #doMonspec(False, ["dtcli", "monspec", "base", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Production", "60", "0"], False)
-        #doMonspec(False, ["dtcli", "monspec", "pullcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60"], False)
+        doMonspec(False, ["dtcli", "monspec", "pullcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60"], False)
         #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60"], False)
         #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60", "0"], False)
         #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60", "60", "60"], False)
@@ -1625,7 +1689,8 @@ def doMonspec(doHelp, args, doPrint):
             result["customDevice"] = createPipelineEntity(monspec, pipelineInfo)
             result["createdMetrics"] = createPerformanceSignatureMetrics(monspec)
 
-            print(result)
+            jsonResult = json.dumps(result, False, False)
+            print(jsonResult)
         elif action == "remove": 
             # check additional parameters first - then parse monspec metadata
             doCheckTempConfigParams(args, 5)
@@ -1634,7 +1699,8 @@ def doMonspec(doHelp, args, doPrint):
             # delete all metrcs
             result["deletedMetrics"] = deletePerformanceSignatureMetrics(monspec)
 
-            print(result)
+            jsonResult = json.dumps(result, False, False)
+            print(jsonResult)
         elif action == "pull" or action == "push" or action == "base":
             # check additional parameters first - then parse monspec metadata
             doCheckTempConfigParams(args, 8)
@@ -1645,7 +1711,7 @@ def doMonspec(doHelp, args, doPrint):
             # push: also pushes the metrics to dynatrace
             # base: sets thresholds
             envservicenames = args[5].split("/")
-            pulledPerformanceSignature = pullMonspecMetrics(monspec, envservicenames[0], envservicenames[1], args[6], args[7], MONSPEC_PERFSIGNATURE_RESULT, False)
+            pulledPerformanceSignature = pullMonspecMetrics(monspec, envservicenames[0], envservicenames[1], args[6], args[7], MONSPEC_PERFSIGNATURE_RESULT, MONSPEC_DATAHANDLING_NORMAL)
             result = { "performanceSignature" : pulledPerformanceSignature}
 
             if action == "pull":
@@ -1657,7 +1723,10 @@ def doMonspec(doHelp, args, doPrint):
                 pushThresholdPerMetric(monspec, envservicenames[0], pipelineInfo)
                 result["comment"] = "Pushed threshold definitions for " + args[5]
 
-            print(result)
+            # lets clean the perf signature definition before printing it out!
+            cleanPerformanceSignature(pulledPerformanceSignature)
+            jsonResult = json.dumps(result, False, False)
+            print(jsonResult)
         elif action == "pullcompare" or action == "pushcompare":
             # can be called with two additonal parameters at the end which are optional. based on that we have to figure out how to check our temp parameter config
             tempArgStart = 7
@@ -1687,16 +1756,18 @@ def doMonspec(doHelp, args, doPrint):
             shifttimeframe = str(compareDef["shiftsourcetimeframe"])
             if optionalShiftSourceTimeframe is not None:
                 shifttimeframe = optionalShiftSourceTimeframe
-            pullMonspecMetrics(monspec, envcomparenames[0], compareDef[MONSPEC_PERFSIGNATURE_SOURCE], args[6], shifttimeframe, MONSPEC_PERFSIGNATURE_RESULT, False)
+            pullMonspecMetrics(monspec, envcomparenames[0], compareDef[MONSPEC_PERFSIGNATURE_SOURCE], args[6], shifttimeframe, MONSPEC_PERFSIGNATURE_RESULT, MONSPEC_DATAHANDLING_NORMAL)
 
             # now we pull in the compare data - either take the shift from shiftcomparetimeframe or from the parameters
+            # ATTENTION: if there is no data source yet to compare, e.g: production is not yet there - then we simply ignore that fact and deliver just the source values
             shifttimeframe = str(compareDef["shiftcomparetimeframe"])
             if optionalShiftCompareTimeframe is not None:
                 shifttimeframe = optionalShiftCompareTimeframe
-            pulledPerformanceSignature = pullMonspecMetrics(monspec, envcomparenames[0], compareDef[MONSPEC_PERFSIGNATURE_COMPARE], args[6], shifttimeframe, MONSPEC_PERFSIGNATURE_RESULT_COMPARE, False)
+            pulledPerformanceSignature = pullMonspecMetrics(monspec, envcomparenames[0], compareDef[MONSPEC_PERFSIGNATURE_COMPARE], args[6], shifttimeframe, MONSPEC_PERFSIGNATURE_RESULT_COMPARE, MONSPEC_DATAHANDLING_IGNORE_ERROR)
             result["performanceSignature"] = pulledPerformanceSignature
 
             # now we calculate the thresholds based on "result_compare" and set the violation
+            # ATTENTION: if there is no Compare data because e.g: your compare-to environment is not yet avaialable we will not see any violations!
             totalViolations = calculateMonspecThresholdAndViolations(monspec, envcomparenames[0], compareDef, MONSPEC_PERFSIGNATURE_RESULT, MONSPEC_PERFSIGNATURE_RESULT_COMPARE)
 
             # push thresholds & metrics to Dynatrace
@@ -1708,7 +1779,10 @@ def doMonspec(doHelp, args, doPrint):
                 result["comment"] = "Pulled compare for " + args[6]                
 
             result["totalViolations"] = totalViolations;
-            print(result)
+
+            cleanPerformanceSignature(pulledPerformanceSignature)
+            jsonResult = json.dumps(result, False, False)
+            print(jsonResult)
         elif action == "pushdeploy":
             # check additional parameters first - no need to parse monspec data
             doCheckTempConfigParams(args, 8)
@@ -1724,7 +1798,7 @@ def doMonspec(doHelp, args, doPrint):
             # Get the entityId of our Pipeline and also push the deployment to the pipeline itself
             # TODO: query pipeline entity id!
 
-            # build the list of arguments for calling doEvent - hre is an example
+            # build the list of arguments for calling doEvent - here is an example
             # dtcli evt push entityId SERVICE-1234,SERVICE-5678 deploymentName=JobDeployment deploymentVersion=123 source=My%20Pipeline owner=My%20team
             eventArgs = ["dtcli", "evt", "push", "entityId", arrayToStringList(foundEntities)]
             eventArgs.extend(["deploymentName=" + args[6], "deploymentVersion=" + args[7], "source=" + pipelineInfo["displayName"], "Monspec%20Entity=" + envservicenames[0], "Monspec%20Environment=" + envservicenames[1]])
@@ -1736,23 +1810,26 @@ def doMonspec(doHelp, args, doPrint):
             event = doEvent(False, eventArgs, False)
 
             result = {"event" : event}
-            print(result)
+
+            # print(result)
+            jsonResult = json.dumps(result)
+            print(jsonResult)
         elif action == "demopull":
             # DEMO for Testing
             envservicenames = args[5].split("/")
-            pulledPerformanceSignature = pullMonspecMetrics(monspec, envservicenames[0], envservicenames[1], args[6], args[7], MONSPEC_PERFSIGNATURE_RESULT, True)
+            pulledPerformanceSignature = pullMonspecMetrics(monspec, envservicenames[0], envservicenames[1], args[6], args[7], MONSPEC_PERFSIGNATURE_RESULT, MONSPEC_DATAHANDLING_DEMODATA)
             print("Pulled Demo Data")
-            print(pulledPerformanceSignature)
+            print(json.dumps(pulledPerformanceSignature))
         elif action == "demopush":
             # DEMO for Testing
             envservicenames = args[5].split("/")
-            pullMonspecMetrics(monspec, envservicenames[0], envservicenames[1], args[6], args[7], MONSPEC_PERFSIGNATURE_RESULT, True)
+            pullMonspecMetrics(monspec, envservicenames[0], envservicenames[1], args[6], args[7], MONSPEC_PERFSIGNATURE_RESULT, MONSPEC_DATAHANDLING_DEMODATA)
             pushMonspecMetrics(monspec, envservicenames[0], pipelineInfo)
             print("Pushed Demo Data")
         elif action == "demobase":
             # DEMO for Testing
             envservicenames = args[5].split("/")
-            pullMonspecMetrics(monspec, envservicenames[0], envservicenames[1], args[6], args[7], MONSPEC_PERFSIGNATURE_RESULT, True)
+            pullMonspecMetrics(monspec, envservicenames[0], envservicenames[1], args[6], args[7], MONSPEC_PERFSIGNATURE_RESULT, MONSPEC_DATAHANDLING_DEMODATA)
             pushThresholdPerMetric(monspec, envservicenames[0], pipelineInfo)
             print("Pushed Demo Base")
         else:
