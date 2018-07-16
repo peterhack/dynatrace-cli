@@ -827,6 +827,8 @@ def calculateMonspecThresholdAndViolations(monspec, entity, compareDef, sourcefi
         # first check is against static thresholds - in case they are defined!
         upperLimitValue = getAttributeOrNone(perfsignature,MONSPEC_PERFSIGNATURE_UPPERLIMIT)
         if upperLimitValue is not None:
+            if type(upperLimitValue) is str:
+                upperLimitValue = float(upperLimitValue)
             perfsignature[MONSPEC_PERFSIGNATURE_THRESHOLD] = upperLimitValue
             if sourceValue > upperLimitValue:
                 perfsignature["violation"] = 1
@@ -834,6 +836,8 @@ def calculateMonspecThresholdAndViolations(monspec, entity, compareDef, sourcefi
 
         lowerLimitValue = getAttributeOrNone(perfsignature,MONSPEC_PERFSIGNATURE_LOWERLIMIT)
         if lowerLimitValue is not None and sourceValue is not None:
+            if type(lowerLimitValue) is str:
+                lowerLimitValue = float(lowerLimitValue)
             perfsignature[MONSPEC_PERFSIGNATURE_THRESHOLD] = lowerLimitValue
             if sourceValue < lowerLimitValue:
                 perfsignature["violation"] = 1
@@ -1725,7 +1729,7 @@ def doMonspec(doHelp, args, doPrint):
 
             # lets clean the perf signature definition before printing it out!
             cleanPerformanceSignature(pulledPerformanceSignature)
-            jsonResult = json.dumps(result, False, False)
+            jsonResult = json.dumps(result)
             print(jsonResult)
         elif action == "pullcompare" or action == "pushcompare":
             # can be called with two additonal parameters at the end which are optional. based on that we have to figure out how to check our temp parameter config
@@ -1781,7 +1785,7 @@ def doMonspec(doHelp, args, doPrint):
             result["totalViolations"] = totalViolations;
 
             cleanPerformanceSignature(pulledPerformanceSignature)
-            jsonResult = json.dumps(result, False, False)
+            jsonResult = json.dumps(result)
             print(jsonResult)
         elif action == "pushdeploy":
             # check additional parameters first - no need to parse monspec data
