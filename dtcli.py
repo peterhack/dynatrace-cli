@@ -1693,7 +1693,7 @@ def doMonspec(doHelp, args, doPrint):
             result["customDevice"] = createPipelineEntity(monspec, pipelineInfo)
             result["createdMetrics"] = createPerformanceSignatureMetrics(monspec)
 
-            jsonResult = json.dumps(result, False, False)
+            jsonResult = json.dumps(result)
             print(jsonResult)
         elif action == "remove": 
             # check additional parameters first - then parse monspec metadata
@@ -1703,7 +1703,7 @@ def doMonspec(doHelp, args, doPrint):
             # delete all metrcs
             result["deletedMetrics"] = deletePerformanceSignatureMetrics(monspec)
 
-            jsonResult = json.dumps(result, False, False)
+            jsonResult = json.dumps(result)
             print(jsonResult)
         elif action == "pull" or action == "push" or action == "base":
             # check additional parameters first - then parse monspec metadata
