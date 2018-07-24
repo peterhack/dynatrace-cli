@@ -3,6 +3,8 @@ jnc47888_live_dynatrace_com/*
 agd*/*
 dtconfig.txt
 dtconfig.json
+smplmonspec.json
+smplpipelineinfo.json
 tmpfiles/*
 dtconfig_jnc.json
 dqlreport_jirabusiness.html
