@@ -915,6 +915,8 @@ def testMain():
         #doEntity(False, ["dtcli", "ent", "srv", "agentTechnologyType=JAVA", "displayName"], True)
         #doEntity(False, ["dtcli", "ent", "srv", "serviceTechnologyTypes=ASP.NET", "displayName"], True)
         #doEntity(False, ["dtcli", "ent", "srv", "serviceTechnologyTypes=ASP.NET", "entityId"], True)
+        #doEntity(False, ["dtcli", "ent", "srv", "tags/CONTEXTLESS:DeploymentGroup=Staging", "entityId"], True)
+        #doEntity(False, ["dtcli", "ent", "srv", "tag=DeploymentGroup:Staging", "entityId"], True)
         #doEntity(False, ["dtcli", "ent", "pg", "key=customizable", "entityId"], True)
         #doEntity(False, ["dtcli", "ent", "pg", "key=se-day", "displayName"], True)
         #doEntity(False, ["dtcli", "ent", "pg", "javaMainClasses=.*Bootstrap.*"], True)
@@ -961,9 +963,11 @@ def testMain():
         # doEvent(False, ["dtcli", "evt", "push", "host", ".*demo.*"], False)
         # doEvent(False, ["dtcli", "evt", "push", "host", "tags/AWS:Name=et-demo.*", "deploymentName=StageDeployment", "deploymentVersion=1.1"], False)
         # doEvent(False, ["dtcli", "evt", "push", "host", "tags/AWS:Name=et-demo.*", "start=12312421000", "deploymentName=StageDeployment", "deploymentVersion=1.1", "source=Jenkins", "ciBackLink=http://myjenkins", "remediationAction=http://myremediationaction", "mycustomprop=my%20custom%value"], False)
+        #doEvent(False, ["dtcli", "evt", "push", "host", "tag=[AWS]Name:Staging", "deploymentName=StageDeployment", "deploymentVersion=1.1", "source=Jenkins", "ciBackLink=http://myjenkins", "remediationAction=http://myremediationaction", "mycustomprop=my%20custom%value"], False)
         # doEvent(False, ["dtcli", "evt", "push", "app", "www.easytravel.com", "eventType=CUSTOM_ANNOTATION", "annotationType=DNSChange", "annotationDescription=RouteChanged", "source=OpsControl", "original=myoldurl.com", "changed=mynewurl.com"], False)
         # doEvent(False, ["dtcli", "evt", "push", "app", "www.easytravel.com", "eventType=CUSTOM_ANNOTATION", "start=60", "end=30", "annotationType=DNSChange", "annotationDescription=RouteChanged", "source=OpsControl", "original=myoldurl.com", "changed=mynewurl.com"], False)
-        # doEvent(False, ["dtcli", "evt", "push", "srv", "tags/?key=v123", "deploymentName=MemoryChange", "deploymentVersion=1.22", "source=Manual", "OldMaxMem=1GB", "NewMaxMem=2GB"], False)
+        #doEvent(False, ["dtcli", "evt", "push", "srv", "tags/CONTEXTLESS:DeploymentGroup=Staging", "deploymentName=MemoryChange", "deploymentVersion=1.22", "source=Manual", "OldMaxMem=1GB", "NewMaxMem=2GB"], False)
+        #doEvent(False, ["dtcli", "evt", "push", "srv", "tag=DeploymentGroup:Staging", "deploymentName=MemoryChange", "deploymentVersion=1.23", "source=Manual", "OldMaxMem=1GB", "NewMaxMem=2GB"], False)
         # doEvent(False, ["dtcli", "evt", "push", "srv", "tags/?key=v123", "eventType=CUSTOM_ANNOTATION", "annotationType=MemoryChange", "annotationDescription=Increased", "source=Manual", "OldMaxMem=1GB", "NewMaxMem=2GB"], False)
         # doEvent(False, ["dtcli", "evt", "push", "app", "www.easytravel.com", "eventType=CUSTOM_ANNOTATION", "annotationType=MemoryChange", "annotationDescription=Increased", "source=Manual", "OldMaxMem=1GB", "NewMaxMem=2GB"], False)
 
@@ -975,13 +979,13 @@ def testMain():
         #doMonspec(False, ["dtcli", "monspec", "pull", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
         #doMonspec(False, ["dtcli", "monspec", "push", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
         #doMonspec(False, ["dtcli", "monspec", "base", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Production", "60", "0"], False)
-        doMonspec(False, ["dtcli", "monspec", "pullcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60"], False)
+        #doMonspec(False, ["dtcli", "monspec", "pullcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60"], False)
         #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60"], False)
         #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60", "0"], False)
         #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60", "60", "60"], False)
         #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60", "http://myserver"], False)
         #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60", "60", "60", "http://myserver"], False)
-        #doMonspec(False, ["dtcli", "monspec", "pushdeploy", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "Job123Deployment", "v123"], False)
+        doMonspec(False, ["dtcli", "monspec", "pushdeploy", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "Job123Deployment", "v123"], False)
         #doMonspec(False, ["dtcli", "monspec", "demopull", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
         #doMonspec(False, ["dtcli", "monspec", "demopush", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
         #doMonspec(False, ["dtcli", "monspec", "demobase", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
@@ -1063,14 +1067,18 @@ def doEntity(doHelp, args, doPrint):
         if(doPrint):
             print("dtcli ent <type> <query> <resulttags|*>")
             print("type: app | srv | pg | host | tags")
+            print("query: there are different options to query, e.g: by name, wildcards, ...")
+            print("query via tag: there are two ways for tag. Either tag=[CONTEXT]KEY:VALUE or tags/CONTEXT:KEY=VALUE")
             print("Examples:")
             print("===================")
             print("dtcli ent app .*easyTravel.*")
             print("dtcli ent srv JourneyService")
-            print("dtcli ent host tag/AWS:Name=et-demo-1-win1")
-            print("dtcli ent host tag/Name=.*demo.*")
+            print("dtcli ent host tags/AWS:Name=et-demo-1-win1")
+            print("dtcli ent host tags/Name=.*demo.*")
+            print("dtcli ent host tag=[AWS]Name=Staging")
             print("dtcli ent srv serviceTechnologyTypes=ASP.NET discoveredName")
-            print("dtcli ent srv tag/?key=v123 *")
+            print("dtcli ent srv tags/?key=v123 *")
+            print("dtcli ent srv tag=DeploymentGroup:Staging")
             print("dtcli ent app .*easyTravel.* displayName")
             print("dtcli ent srv {tagdef} entityId")
     else:
@@ -1088,7 +1096,7 @@ def doEntity(doHelp, args, doPrint):
 
             # if arg(3) is a tag object we convert it into a queryurl and then set it to empty string
             queryString = ""
-            if(type(args[3] is list)) :
+            if(type(args[3]) is list) :
                 for tagEntry in args[3]:                    
                     if(len(queryString) > 0):
                         queryString += " AND "
@@ -1101,6 +1109,12 @@ def doEntity(doHelp, args, doPrint):
 
                 queryString = "tag=" + queryString
                 args[3] = None
+
+            # if arg(3) is in the form of tag=CONTEXTLESS:DeploymentGroup=Staging then we just pass it on as the queryString    
+            if(type(args[3]) is str) :
+                if(args[3].startswith("tag=")):
+                    queryString = args[3]
+                    args[3] = None
 
             # execute our query - potentially with a queryString that contains ?tag=
             jsonContent = queryDynatraceAPI(True, apiEndpoint, queryString, "")
@@ -1502,6 +1516,7 @@ def doEvent(doHelp, args, doPrint):
         print("entity:  either entity ids or queries of particular entity types")
         print("         - entitiyId HOST-776CE98524279B25: this specifies exactly this entity")
         print("         - host .*demo.*: this will query the hosts that match that name")
+        print("         - tag: there are two ways for tag. Either tag=[CONTEXT]KEY:VALUE or tags/CONTEXT:KEY=VALUE")
         print("options: list of name/value pairs. The only mandatory option is the entityId. Here is a list of additional options: ")
         print("         - start, end: Start/End of event. You can either specify a timestamp or specify 0(=Now), 60(=60 Minutes Ago) ... ")
         print("         - deploymentName, deploymentVersion, deploymentProject: any textual representation of your deployment")
@@ -1518,6 +1533,10 @@ def doEvent(doHelp, args, doPrint):
         print("dtcli evt push entityId HOST-776CE98524279B25")
         print("dtcli evt push host .*demo.*")
         print("dtcli evt push host tags/Environment=Staging deploymentName=StageDeployment deploymentVersion=1.1")
+        print("dtcli evt push host tags/AWS:Name=Staging deploymentName=StageDeployment deploymentVersion=1.1")
+        print("dtcli evt push host tag=[AWS]Name:Staging deploymentName=StageDeployment deploymentVersion=1.1")
+        print("dtcli evt push srv tags/CONTEXTLESS:DeploymentGroup=Staging deploymentName=StageDeployment deploymentVersion=1.1")
+        print("dtcli evt push srv tag=DeploymentGroup:Staging deploymentName=StageDeployment deploymentVersion=1.1")
         print("dtcli evt push entityId HOST-776CE98524279B25 start=1234124123000 end=0 deploymentName=StageDeployment deploymentVersion=1.0 deploymentProject=easyTravel source=Jenkins ciBackLink=http://myjenkins remediationAction=http://myremediationaction")
         print("dtcli evt push entityId HOST-776CE98524279B25,APPLICATION-F5E7AEA0AB971DB1 deploymentName=StageDeployment source=Jenkins mycustomproperty=my%20custom%value someotherpropoerty=someothervalue")
         print("-----")
