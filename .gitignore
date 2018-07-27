@@ -1,5 +1,7 @@
 dtconfig.txt_old
 jnc47888_live_dynatrace_com/*
+hci*/*
+qvh*/*
 agd*/*
 dtconfig.txt
 dtconfig.json
@@ -7,3 +9,9 @@ tmpfiles/*
 dtconfig_jnc.json
 dqlreport_jirabusiness.html
 images/dtcli-images.pptx
+dqlreport.html
+dqlreport2.html
+dqlreport_perfclinic_v1.html
+externalsynthtest.py
+customdevice.py
+.vscode*/*
