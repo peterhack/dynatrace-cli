@@ -1104,7 +1104,8 @@ def doEntity(doHelp, args, doPrint):
                     key = getAttributeOrNone(tagEntry, "key")
                     value = getAttributeOrNone(tagEntry, "value")
                     if((context is not None) and (context != "CONTEXTLESS")) : queryString += ("[" + context + "]")
-                    if(key is not None): queryString += (key + ":")
+                    if(key is not None): queryString += key
+                    if(key is not None and value is not None) : queryString += ":"
                     if(value is not None): queryString += value
 
                 queryString = "tag=" + queryString
