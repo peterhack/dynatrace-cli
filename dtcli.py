@@ -1615,7 +1615,7 @@ def doEvent(doHelp, args, doPrint):
                 return
 
             if(args[3] == "entityId"):
-                event["attachRules"]["entityIds"] = args[4].spilt(",")
+                event["attachRules"]["entityIds"] = args[4].split(",")
             else:
                 foundEntities = doEntity(False, ["dtcli", "ent", args[3], args[4]], False)
                 if(len(foundEntities) <= 0):
