@@ -1615,7 +1615,7 @@ def doEvent(doHelp, args, doPrint):
                 return
 
             if(args[3] == "entityId"):
-                event["attachRules"]["entityIds"].append(args[4])
+                event["attachRules"]["entityIds"] = args[4].spilt(",")
             else:
                 foundEntities = doEntity(False, ["dtcli", "ent", args[3], args[4]], False)
                 if(len(foundEntities) <= 0):
@@ -2000,6 +2000,7 @@ def doTag(doHelp, args, doPrint):
     return None    
 
 if __name__ == "__main__":
+      
     if runTestSuite: 
         testMain()
     else: 
