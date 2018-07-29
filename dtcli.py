@@ -213,7 +213,11 @@ def queryDynatraceAPIEx(httpMethod, apiEndpoint, queryString, postBody):
     fullCacheFilename = getCacheFilename(apiEndpoint, queryString)
     readFromCache = False
     if(os.path.isfile(fullCacheFilename)):
-        cacheupdate = int(config["cacheupdate"])
+        cacheupdate = getAttributeOrNone(config, "cacheupdate")
+        if(cacheupdate is None):
+            cacheupdate = -1
+        else:
+            cacheupdate = int(config["cacheupdate"])
         if(cacheupdate == -1):
             readFromCache = True
         if(cacheupdate > 0):
