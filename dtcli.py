@@ -64,7 +64,8 @@ dtconfigfilename = os.path.dirname(os.path.abspath(__file__)) + osfileslashes + 
 config = {
     "tenanthost"  : "smpljson",   # "abc12345.live.dynatrace.com" # this would be the configuration for a specific Dynatrace SaaS Tenant
     "apitoken"    : "smpltoken",  # YOUR API TOKEN, generated with Dynatrace
-    "cacheupdate" : -1            # -1 = NEVER, 0=ALWAYS, X=After X seconds
+    "cacheupdate" : -1,           # -1 = NEVER, 0=ALWAYS, X=After X seconds
+    "cachedir"    : ""            # cache directory. If empty or None we take the current working directory!
 }
 
 global_doPrint = False
@@ -80,6 +81,10 @@ def getRequestUrl(apiEndpoint, queryString):
     if(not requestUrl.startswith("https://")) : 
         requestUrl = "https://" + requestUrl;
 
+    # TODO: check for trailing / and remove it if there
+    # if(requestUrl.endswith("/")) :
+        # requestsUrl = requestsUrl.substr(0, strlen(requestUrl) - 1)
+
     if(queryString is not None and len(queryString) > 0):
         requestUrl += "?" + queryString
 
@@ -87,7 +92,17 @@ def getRequestUrl(apiEndpoint, queryString):
 
 # Constructs the cached filename based on API Endpoint and Query String
 def getCacheFilename(apiEndpoint, queryString):
-    fullCacheFilename = os.path.dirname(os.path.abspath(__file__)) + osfileslashes + config["tenanthost"].replace("https://","").replace(".", "_") + osfileslashes + apiEndpoint.replace("/","_")
+    
+    # get the cachedir from our config or use the current working directory
+    cachedir = getAttributeOrNone(config, "cachdir")
+    if cachedir is None or cachedir == "":
+        cachedir = os.path.dirname(os.path.abspath(__file__))
+
+    # make sure the cachedir has the trailing slash
+    if not cachedir.endswith(osfileslashes) :
+        cachedir += osfileslashes
+
+    fullCacheFilename = cachedir + osfileslashes + config["tenanthost"].replace("https://","").replace(".", "_") + osfileslashes + apiEndpoint.replace("/","_")
     if(queryString is not None and len(queryString) > 0):
         fullCacheFilename += osfileslashes + urllib.parse.unquote(queryString).replace(".", "_").replace(":", "_").replace("?", "_").replace("&", "_")
     fullCacheFilename += ".json"
@@ -475,6 +490,13 @@ def handleException(e):
     print(errorObject)
     sys.exit(1)
 
+def getAttributeOrDefault(baseobject, attributename, default):
+    "Tries to get the attribute with that name from that object or returns default if not existing"
+    attributeValue = getAttributeOrNone(baseobject, attributename)
+    if attributeValue is None:
+        attributeValue = default
+    return attributeValue
+
 def getAttributeOrNone(baseobject, attributename):
     "Tries to get the attribute with that name from that object or returns None if not existing"
     attributeValue = None
@@ -507,7 +529,7 @@ def parseMonspec(monspecfile, fillMetaData):
 
             if (fillMetaData) :
                 # 3: now we iteratre through the perfsignature entries and fill each entry up with more details about the metric
-                perfsignatures = monspecConfig[MONSPEC_PERFSIGNATURE]
+                perfsignatures = getAttributeOrNone(monspecConfig, MONSPEC_PERFSIGNATURE)
                 if (perfsignatures is not None):
                     for perfsignature in perfsignatures:
                         
@@ -981,6 +1003,7 @@ def testMain():
         #doMonspec(False, ["dtcli", "monspec", "init", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json"], False)
         #doMonspec(False, ["dtcli", "monspec", "remove", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json"], False)
         #doMonspec(False, ["dtcli", "monspec", "pull", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
+        doMonspec(False, ["dtcli", "monspec", "push", "monspec/monspec.json", "monspec/smplpipelineinfo.json", "MaaSHost/Lab2", "60", "0"], False)
         #doMonspec(False, ["dtcli", "monspec", "push", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
         #doMonspec(False, ["dtcli", "monspec", "base", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Production", "60", "0"], False)
         #doMonspec(False, ["dtcli", "monspec", "pullcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60"], False)
@@ -989,7 +1012,7 @@ def testMain():
         #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60", "60", "60"], False)
         #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60", "http://myserver"], False)
         #doMonspec(False, ["dtcli", "monspec", "pushcompare", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/StagingToProduction", "60", "60", "60", "http://myserver"], False)
-        doMonspec(False, ["dtcli", "monspec", "pushdeploy", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "Job123Deployment", "v123"], False)
+        #doMonspec(False, ["dtcli", "monspec", "pushdeploy", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "Job123Deployment", "v123"], False)
         #doMonspec(False, ["dtcli", "monspec", "demopull", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
         #doMonspec(False, ["dtcli", "monspec", "demopush", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
         #doMonspec(False, ["dtcli", "monspec", "demobase", "monspec/smplmonspec.json", "monspec/smplpipelineinfo.json", "SampleJSonService/Staging", "60", "0"], False)
@@ -1299,6 +1322,7 @@ def doConfig(doHelp, args):
         config["apitoken"] = "smpltoken"
         config["tenanthost"] = "smpljson"
         config["cacheupdate"] = -1
+        config["cachedir"] = ""
         print("Reverting back to local cached demo environment. Remember: only read-only operations work")
         saveConfig()
         return;
@@ -1308,12 +1332,16 @@ def doConfig(doHelp, args):
         print("apitoken <dynatracetoken>")
         print("tenanthost <yourdynatraceserver.domain>")
         print("cacheupdate -1 (only use cache), 0 (=never use cache), X (=update cache in X Minutes)")
+        print("cachedir <yourlocalcachedirectory>")
         print("revert: will revert to local cache setting")
         print("Examples")
         print("==============")
-        print("dtapi config apitoken ABCEDEFASDF tenanthost myurl.live.dynatrace.com cacheupdate 5")
+        print("dtapi config apitoken ABCEDEFASDF tenanthost myurl.live.dynatrace.com cacheupdate 5 cachedir /cachedir")
         print("==============")
         print("Current Dynatrace Tenant: " + config["tenanthost"])
+        print("Current API Token: xxxxxxxxxx")
+        print("Current Cacheupdate: " + str(config["cacheupdate"]))
+        print("Current cachedir: " + getAttributeOrDefault(config, "cachedir", ""))
     else:
         # global config
         i = 2
@@ -1326,6 +1354,8 @@ def doConfig(doHelp, args):
                 config["tenanthost"] = configValue
             elif configName == "cacheupdate":
                 config["cacheupdate"] = int(configValue)
+            elif configName == "cachedir":
+                config["cachedir"] = configValue
             else:
                 print("Configuration element '" + configName + "' not valid")
                 doConfig(True, args)
@@ -1342,6 +1372,8 @@ def doCheckTempConfigParams(args, argIndex):
         config["apitoken"] = args[argIndex+1]     
     if(len(args) > argIndex+2):
         config["cacheupdate"] = int(args[argIndex+2])
+    if(len(args) > argIndex+3):
+        config["cachedir"] = int(args[argIndex+3])
 
 def doDQLReport(doHelp, args, doPrint):
     "Simliar to DQL but DQLR will generate an HTML Report for eachi timeseries"
@@ -1457,7 +1489,7 @@ def doDQL(doHelp, args, doPrint):
         print("dtcli dql srv tags/v123 service.responsetime[p50%hour]")
 
     else:
-        entityTypes = ["appmethod","servicemethod","app","srv","pg","host"]
+        entityTypes = ["appmethod","servicemethod","app","srv","pg","pgi","host"]
         entityType = None
         if (len(args) <= 4) or not operator.contains(entityTypes, args[2]):
             # Didnt provide the correct parameters - show help!
@@ -1829,7 +1861,7 @@ def doMonspec(doHelp, args, doPrint):
             # build the list of arguments for calling doEvent - here is an example
             # dtcli evt push entityId SERVICE-1234,SERVICE-5678 deploymentName=JobDeployment deploymentVersion=123 source=My%20Pipeline owner=My%20team
             eventArgs = ["dtcli", "evt", "push", "entityId", arrayToStringList(foundEntities)]
-            eventArgs.extend(["deploymentName=" + args[6], "deploymentVersion=" + args[7], "source=" + pipelineInfo["displayName"], "Monspec%20Entity=" + envservicenames[0], "Monspec%20Environment=" + envservicenames[1]])
+            eventArgs.extend(["deploymentName=" + args[6], "deploymentVersion=" + args[7], "source=" + pipelineInfo["displayName"], "Monspec Entity=" + envservicenames[0], "Monspec Environment=" + envservicenames[1]])
             owner = getAttributeOrNone(monspec[envservicenames[0]], "owner")
             if owner is not None: 
                 eventArgs.append("owner=" + encodeString(owner))        
