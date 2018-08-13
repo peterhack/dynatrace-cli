@@ -1135,7 +1135,8 @@ def doEntity(doHelp, args, doPrint):
                     if(key is not None and value is not None) : queryString += ":"
                     if(value is not None): queryString += value
 
-                queryString = "tag=" + queryString
+                if(len(queryString) > 0):
+                    queryString = "tag=" + queryString
                 args[3] = None
 
             # if arg(3) is in the form of tag=CONTEXTLESS:DeploymentGroup=Staging then we just pass it on as the queryString    
