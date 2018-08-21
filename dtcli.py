@@ -9,6 +9,8 @@ import datetime
 import operator
 import urllib
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # =========================================================
 # CONSTANTS
@@ -65,7 +67,8 @@ config = {
     "tenanthost"  : "smpljson",   # "abc12345.live.dynatrace.com" # this would be the configuration for a specific Dynatrace SaaS Tenant
     "apitoken"    : "smpltoken",  # YOUR API TOKEN, generated with Dynatrace
     "cacheupdate" : -1,           # -1 = NEVER, 0=ALWAYS, X=After X seconds
-    "cachedir"    : ""            # cache directory. If empty or None we take the current working directory!
+    "cachedir"    : "",           # cache directory. If empty or None we take the current working directory!
+    "debug"       : 0             # 0 == no debugging output, 1== debug log output
 }
 
 global_doPrint = False
@@ -224,6 +227,9 @@ def queryDynatraceAPI(isGet, apiEndpoint, queryString, postBody):
 def queryDynatraceAPIEx(httpMethod, apiEndpoint, queryString, postBody):
     "Executes a Dynatrace REST API Query. First validates if data is already available in Cache."
 
+    if (getAttributeOrDefault(config, "debug", 0) == 1) :
+        print("DEBUG - queryDynatraceAPIEx: " + apiEndpoint + "?" + queryString)
+
     # we first validate if we have the file in cache. NOTE: we only store HTTP GET data in the Cache. NO POST!
     fullCacheFilename = getCacheFilename(apiEndpoint, queryString)
     readFromCache = False
@@ -248,13 +254,13 @@ def queryDynatraceAPIEx(httpMethod, apiEndpoint, queryString, postBody):
     else:
         myResponse = None
         if httpMethod == HTTP_GET:
-            myResponse = requests.get(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=True)
+            myResponse = requests.get(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=False)
         elif httpMethod == HTTP_POST:
-            myResponse = requests.post(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=True, json=postBody)
+            myResponse = requests.post(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=False, json=postBody)
         elif httpMethod == HTTP_PUT:
-            myResponse = requests.put(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=True, json=postBody)
+            myResponse = requests.put(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=False, json=postBody)
         elif httpMethod == HTTP_DELETE:
-            myResponse = requests.delete(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=True, json=postBody)
+            myResponse = requests.delete(getRequestUrl(apiEndpoint, queryString), headers=getAuthenticationHeader(), verify=False, json=postBody)
 
         # For successful API call, response code will be 200 (OK)
         if(myResponse.ok):
@@ -1324,6 +1330,7 @@ def doConfig(doHelp, args):
         config["tenanthost"] = "smpljson"
         config["cacheupdate"] = -1
         config["cachedir"] = ""
+        config["debug"] = 0
         print("Reverting back to local cached demo environment. Remember: only read-only operations work")
         saveConfig()
         return;
@@ -1357,6 +1364,8 @@ def doConfig(doHelp, args):
                 config["cacheupdate"] = int(configValue)
             elif configName == "cachedir":
                 config["cachedir"] = configValue
+            elif configName == "debug":
+                config["debug"] = int(configValue)
             else:
                 print("Configuration element '" + configName + "' not valid")
                 doConfig(True, args)
@@ -1716,6 +1725,9 @@ def doMonspec(doHelp, args, doPrint):
             print("dtcli monspec demopull monspec.json pipelineinfo.json SampleJSonService/Staging")
             print("dtcli monspec demopush monspec.json pipelineinfo.json SampleJSonService/Staging")
             print("dtcli monspec demobase monspec.json pipelineinfo.json SampleJSonService/Staging")
+            print("Explanation of parameters:")
+            print("==========================")
+            print("")
     else:
         actionTypes = ["init", "remove", "pull", "push", "base", "pullcompare", "pushcompare", "pushdeploy", "demopull", "demopush", "demobase"]
         action = args[2]
