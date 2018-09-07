@@ -1132,7 +1132,7 @@ def doEntity(doHelp, args, doPrint):
             if(type(args[3]) is list) :
                 for tagEntry in args[3]:                    
                     if(len(queryString) > 0):
-                        queryString += " AND "
+                        queryString += "&tag="
                     context = getAttributeOrNone(tagEntry, "context")
                     key = getAttributeOrNone(tagEntry, "key")
                     value = getAttributeOrNone(tagEntry, "value")
@@ -1145,7 +1145,7 @@ def doEntity(doHelp, args, doPrint):
                     queryString = "tag=" + queryString
                 args[3] = None
 
-            # if arg(3) is in the form of tag=CONTEXTLESS:DeploymentGroup=Staging then we just pass it on as the queryString    
+            # if arg(3) is in the form of tag=[CONTEXTLESS]DeploymentGroup=Staging then we just pass it on as the queryString    
             if(type(args[3]) is str) :
                 if(args[3].startswith("tag=")):
                     queryString = args[3]
