@@ -1,3 +1,5 @@
+**DISCLAIMER**: This tutorial is currently under development by the Dynatrace Innovation Lab and is not officially supported by Dynatrace! If you have any questions please get in contact with me, the main author (@grabnerandi)!
+
 # Dynatrace CLI (Command Line Interface)
 This Python based CLI makes it easy to access the Dynatrace API (both SaaS and Managed). Besides accessing the underlying API the CLI also implements some DevOps specific use cases that allows you to automate Dynatrace into your DevOps Delivery Pipeline.
 
