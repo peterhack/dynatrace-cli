@@ -228,7 +228,7 @@ def queryDynatraceAPIEx(httpMethod, apiEndpoint, queryString, postBody):
     "Executes a Dynatrace REST API Query. First validates if data is already available in Cache."
 
     if (getAttributeOrDefault(config, "debug", 0) == 1) :
-        print("DEBUG - queryDynatraceAPIEx: " + apiEndpoint + "?" + queryString)
+        print("DEBUG - queryDynatraceAPIEx: " + apiEndpoint + "?" + queryString + " - BODY: " + postBody)
 
     # we first validate if we have the file in cache. NOTE: we only store HTTP GET data in the Cache. NO POST!
     fullCacheFilename = getCacheFilename(apiEndpoint, queryString)
@@ -864,6 +864,7 @@ def calculateMonspecThresholdAndViolations(monspec, entity, compareDef, sourcefi
             perfsignature[MONSPEC_PERFSIGNATURE_THRESHOLD] = upperLimitValue
             if sourceValue > upperLimitValue:
                 perfsignature["violation"] = 1
+                totalViolations += perfsignature["violation"]
             continue
 
         lowerLimitValue = getAttributeOrNone(perfsignature,MONSPEC_PERFSIGNATURE_LOWERLIMIT)
@@ -873,6 +874,7 @@ def calculateMonspecThresholdAndViolations(monspec, entity, compareDef, sourcefi
             perfsignature[MONSPEC_PERFSIGNATURE_THRESHOLD] = lowerLimitValue
             if sourceValue < lowerLimitValue:
                 perfsignature["violation"] = 1
+                totalViolations += perfsignature["violation"]
             continue
 
         # NO STATIC THRESHOLDS -> in that case - lets do the regular comparision!
@@ -1112,6 +1114,7 @@ def doEntity(doHelp, args, doPrint):
             print("dtcli ent srv serviceTechnologyTypes=ASP.NET discoveredName")
             print("dtcli ent srv tags/?key=v123 *")
             print("dtcli ent srv tag=DeploymentGroup:Staging")
+            print("dtcli ent srv tag=DeploymentGroup:Staging&tag=ServiceType:Frontend")
             print("dtcli ent app .*easyTravel.* displayName")
             print("dtcli ent srv {tagdef} entityId")
     else:
