@@ -228,7 +228,7 @@ def queryDynatraceAPIEx(httpMethod, apiEndpoint, queryString, postBody):
     "Executes a Dynatrace REST API Query. First validates if data is already available in Cache."
 
     if (getAttributeOrDefault(config, "debug", 0) == 1) :
-        print("DEBUG - queryDynatraceAPIEx: " + apiEndpoint + "?" + queryString + " - BODY: " + postBody)
+        print("DEBUG - queryDynatraceAPIEx: " + apiEndpoint + "?" + queryString + " - BODY: " + str(postBody))
 
     # we first validate if we have the file in cache. NOTE: we only store HTTP GET data in the Cache. NO POST!
     fullCacheFilename = getCacheFilename(apiEndpoint, queryString)
