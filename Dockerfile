@@ -7,5 +7,5 @@ RUN apk add --update \
     && pip3 install requests
 
 COPY ./dtcli.py /dtcli/dtcli.py
-
+USER 1000
 CMD ["bash"]
