@@ -22,7 +22,7 @@ LABEL name="dynatrace-cli" \
 ### Setup user for build execution and application runtime
 ENV APP_ROOT=/opt/app-root
 ENV PATH=${APP_ROOT}/bin:${PATH} HOME=${APP_ROOT}
-COPY /usr/bin/ ${APP_ROOT}/bin/
+#COPY /usr/bin/ ${APP_ROOT}/bin/
 COPY . ${APP_ROOT}
 RUN chmod -R u+x ${APP_ROOT}/bin && \
     chgrp -R 0 ${APP_ROOT} && \
