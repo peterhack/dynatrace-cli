@@ -8,4 +8,4 @@ RUN apk add --update \
 
 COPY ./dtcli.py /dtcli/dtcli.py
 USER 1000
-CMD ["bash"]
+CMD ["/bin/bash"]
