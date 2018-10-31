@@ -8,4 +8,3 @@ COPY ./dtcli.py /dtcli/dtcli.py
 
 USER 1000
 
-CMD ["/usr/bin/bash"]
